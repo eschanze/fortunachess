@@ -2,7 +2,11 @@
 
 **Proyecto Final ICI2240-2 (2025-1)**
 
-**Autores**: Benjamín Bustos, Esteban Schanze, Isabot Sonnier
+**Autores:**
+- Benjamín Bustos
+- Esteban Schanze  
+- Isabot Sonnier
+
 **Profesor:** Ignacio Araya
 
 ## Descripción
