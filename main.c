@@ -335,7 +335,22 @@ bool parse_move(const char *move_str, move_t *move, gamestate_t *game) {
  * @return true si el deslizamiento es válido y no está obstruido.
  */
 bool is_slide_valid(move_t *move, gamestate_t *game, int dir) {
-    // TODO: Validar si el camino está libre para piezas deslizantes.
+    int from = move->from;
+    int to = move->to;
+    int *board = game->board;
+
+    // Recorrer la dirección dada desde la casilla origen
+    for (int sq = from + dir; IS_VALID_SQUARE(sq); sq += dir) {
+        if (sq == to) {
+            int target = board[to];
+            return (target == EMPTY || COLOR(target) != COLOR(move->piece));
+        }
+
+        // Si hay una pieza en el camino, es inválido
+        if (board[sq] != EMPTY)
+            return false;
+    }
+
     return false;
 }
 
@@ -349,7 +364,67 @@ bool is_slide_valid(move_t *move, gamestate_t *game, int dir) {
  * @return true si la casilla está bajo ataque.
  */
 bool is_square_attacked(gamestate_t *game, int square, int by_color) {
-    // TODO: Verificar si una casilla está atacada por el color dado.
+    int *board = game->board;
+
+    // Ataques de peón
+    int pawn_attack_dir = (by_color == WHITE) ? -16 : 16;
+    int attacking_pawn = MAKE_PIECE(PAWN, by_color);
+    int pawn_left = square + pawn_attack_dir - 1;
+    int pawn_right = square + pawn_attack_dir + 1;
+
+    if (IS_VALID_SQUARE(pawn_left) && board[pawn_left] == attacking_pawn)
+        return true;
+    if (IS_VALID_SQUARE(pawn_right) && board[pawn_right] == attacking_pawn)
+        return true;
+
+    // Ataques de caballo
+    int attacking_knight = MAKE_PIECE(KNIGHT, by_color);
+    for (int i = 0; i < 8; i++) {
+        int knight_sq = square + knight_moves[i];
+        if (IS_VALID_SQUARE(knight_sq) && board[knight_sq] == attacking_knight)
+            return true;
+    }
+
+    // Ataques de rey
+    int attacking_king = MAKE_PIECE(KING, by_color);
+    for (int i = 0; i < 8; i++) {
+        int king_sq = square + king_moves[i];
+        if (IS_VALID_SQUARE(king_sq) && board[king_sq] == attacking_king)
+            return true;
+    }
+
+    // Ataques diagonales (alfil/reina)
+    for (int i = 0; i < 4; i++) {
+        int dir = bishop_dirs[i];
+        for (int sq = square + dir; IS_VALID_SQUARE(sq); sq += dir) {
+            int piece = board[sq];
+            if (piece != EMPTY) {
+                if (COLOR(piece) == by_color) {
+                    int piece_type = PIECE_TYPE(piece);
+                    if (piece_type == BISHOP || piece_type == QUEEN)
+                        return true;
+                }
+                break;
+            }
+        }
+    }
+
+    // Ataques ortogonales (torre/reina)
+    for (int i = 0; i < 4; i++) {
+        int dir = rook_dirs[i];
+        for (int sq = square + dir; IS_VALID_SQUARE(sq); sq += dir) {
+            int piece = board[sq];
+            if (piece != EMPTY) {
+                if (COLOR(piece) == by_color) {
+                    int piece_type = PIECE_TYPE(piece);
+                    if (piece_type == ROOK || piece_type == QUEEN)
+                        return true;
+                }
+                break;
+            }
+        }
+    }
+
     return false;
 }
 
@@ -360,8 +435,8 @@ bool is_square_attacked(gamestate_t *game, int square, int by_color) {
  * @return true si el rey está en jaque.
  */
 bool is_in_check(gamestate_t *game, int color) {
-    // TODO: Detectar si el rey del color está en jaque.
-    return false;
+    int king_square = game->king_square[color == WHITE ? 0 : 1];
+    return is_square_attacked(game, king_square, color ^ BLACK);
 }
 
 /**
@@ -372,7 +447,204 @@ bool is_in_check(gamestate_t *game, int color) {
  * @return true si el movimiento es legal.
  */
 bool is_legal_move(move_t *move, gamestate_t *game) {
-    // TODO: Validar legalidad del movimiento
+    int from = move->from;
+    int to = move->to;
+    int piece = move->piece;
+    int piece_type = PIECE_TYPE(piece);
+    int piece_color = COLOR(piece);
+    
+    // Validaciones básicas
+    if (!IS_VALID_SQUARE(from) || !IS_VALID_SQUARE(to)) 
+        return false;
+    if (from == to) 
+        return false;
+    if ((game->board[from] == EMPTY) || (game->board[from] != piece))
+        return false;
+    if (piece_color != game->to_move) 
+        return false;
+    
+    int target_piece = game->board[to];
+    if (target_piece != EMPTY) {
+        // No capturar pieza propia
+        if (COLOR(target_piece) == piece_color) 
+            return false;
+        if (move->captured != target_piece) 
+            return false;
+    } else {
+        // Captura vacía solo si es en passant
+        if (move->captured != EMPTY && move->flags != MOVE_EN_PASSANT) 
+            return false;
+    }
+    
+    // Validación por tipo de pieza
+    switch (piece_type) {
+        case PAWN: {
+            int direction = (piece_color == WHITE) ? 16 : -16;
+            int start_rank = (piece_color == WHITE) ? 1 : 6;
+            int delta = to - from;
+            
+            if (move->flags == MOVE_EN_PASSANT) {
+                if (to != game->en_passant_square) 
+                    return false;
+                if (delta != direction - 1 && delta != direction + 1) 
+                    return false;
+                
+                int captured_square = to - direction;
+                if (game->board[captured_square] != MAKE_PIECE(PAWN, 1 - piece_color)) 
+                    return false;
+                    
+            } else if (target_piece == EMPTY) {
+                if (delta == direction) {
+                } else if (delta == 2 * direction && RANK(from) == start_rank) {
+                    // Avance doble desde casilla inicial
+                } else {
+                    return false;
+                }
+            } else {
+                if (delta != direction - 1 && delta != direction + 1) 
+                    return false;
+            }
+            
+            int promotion_rank = (piece_color == WHITE) ? 7 : 0;
+            if (RANK(to) == promotion_rank) {
+                if (move->flags != MOVE_PROMOTION || move->promotion == 0) 
+                    return false;
+                if (move->promotion < KNIGHT || move->promotion > QUEEN) 
+                    return false;
+            } else {
+                if (move->flags == MOVE_PROMOTION) 
+                    return false;
+            }
+            break;
+        }
+        
+        case KNIGHT: {
+            bool valid_knight_move = false;
+            for (int i = 0; i < 8; i++) {
+                if (to == from + knight_moves[i]) {
+                    valid_knight_move = true;
+                    break;
+                }
+            }
+            if (!valid_knight_move) 
+                return false;
+            break;
+        }
+        
+        case BISHOP: {
+            bool valid_bishop_move = false;
+            for (int i = 0; i < 4; i++) {
+                if (is_slide_valid(move, game, bishop_dirs[i])) {
+                    valid_bishop_move = true;
+                    break;
+                }
+            }
+            if (!valid_bishop_move) 
+                return false;
+            break;
+        }
+        
+        case ROOK: {
+            bool valid_rook_move = false;
+            for (int i = 0; i < 4; i++) {
+                if (is_slide_valid(move, game, rook_dirs[i])) {
+                    valid_rook_move = true;
+                    break;
+                }
+            }
+            if (!valid_rook_move) 
+                return false;
+            break;
+        }
+        
+        case QUEEN: {
+            bool valid_queen_move = false;
+            
+            for (int i = 0; i < 4; i++) {
+                if (is_slide_valid(move, game, bishop_dirs[i])) {
+                    valid_queen_move = true;
+                    break;
+                }
+            }
+            
+            if (!valid_queen_move) {
+                for (int i = 0; i < 4; i++) {
+                    if (is_slide_valid(move, game, rook_dirs[i])) {
+                        valid_queen_move = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!valid_queen_move) 
+                return false;
+            break;
+        }
+        
+        case KING: {
+            if (move->flags == MOVE_CASTLE_KING || move->flags == MOVE_CASTLE_QUEEN) {
+                if (is_in_check(game, piece_color)) 
+                    return false;
+                
+                int required_right = (move->flags == MOVE_CASTLE_KING) ? 
+                    (piece_color == WHITE ? CASTLE_WHITE_KING : CASTLE_BLACK_KING) :
+                    (piece_color == WHITE ? CASTLE_WHITE_QUEEN : CASTLE_BLACK_QUEEN);
+                
+                if (!(game->castling_rights & required_right)) 
+                    return false;
+                
+                int king_start = (piece_color == WHITE) ? 0x04 : 0x74;
+                int king_end, rook_start, rook_end;
+                
+                if (move->flags == MOVE_CASTLE_KING) {
+                    king_end = king_start + 2;
+                    rook_start = king_start + 3;
+                    rook_end = king_start + 1;
+                } else {
+                    king_end = king_start - 2;
+                    rook_start = king_start - 4;
+                    rook_end = king_start - 1;
+                }
+                
+                if (from != king_start || to != king_end) 
+                    return false;
+                
+                if (game->board[rook_start] != MAKE_PIECE(ROOK, piece_color)) 
+                    return false;
+                
+                int step = (move->flags == MOVE_CASTLE_KING) ? 1 : -1;
+                for (int square = king_start + step; square != rook_start; square += step) {
+                    if (game->board[square] != EMPTY) 
+                        return false;
+                }
+                
+                for (int square = king_start; square != king_end + step; square += step) {
+                    if (is_square_attacked(game, square, 1 - piece_color)) 
+                        return false;
+                }
+                
+            } else {
+                // Movimiento normal de rey
+                bool valid_king_move = false;
+                for (int i = 0; i < 8; i++) {
+                    if (to == from + king_moves[i]) {
+                        valid_king_move = true;
+                        break;
+                    }
+                }
+                if (!valid_king_move) 
+                    return false;
+            }
+            break;
+        }
+    }
+    
+    // Simular jugada y verificar jaque
+    gamestate_t temp_game = *game;
+    make_move(move, &temp_game);
+    if (is_in_check(&temp_game, piece_color)) 
+        return false;
+    
     return true;
 }
 
@@ -383,24 +655,107 @@ bool is_legal_move(move_t *move, gamestate_t *game) {
  * @param game: puntero al estado del juego a actualizar.
  */
 void make_move(move_t *move, gamestate_t *game) {
-    // Extraer información de la pieza que se mueve
     int moving_piece = move->piece;
     int piece_type = PIECE_TYPE(moving_piece);
     int piece_color = COLOR(moving_piece);
     
-    // Realizar el movimiento
-    game->board[move->from] = EMPTY;          // Vaciar casilla de origen
-    game->board[move->to] = moving_piece;     // Colocar pieza en destino
-
-     // TODO: Implementar casos especiales que faltan: enroque, en passant, promoción, etc.
-
-    // Incrementar contador de jugadas completas solo después del turno de las negras
-    // Una "jugada completa" = blancas mueven + negras mueven
-    if (game->to_move == BLACK)
-        game->fullmove_number++;
+    // Mueve la pieza
+    game->board[move->from] = EMPTY;
+    game->board[move->to] = moving_piece;
     
-    // Cambiar el turno al otro jugador usando el operador XOR (para un mayor rendimiento)
-    game->to_move ^= 1;
+    // Promoción
+    if (move->flags == MOVE_PROMOTION) {
+        game->board[move->to] = MAKE_PIECE(move->promotion, piece_color);
+    }
+    
+    // Captura al paso
+    if (move->flags == MOVE_EN_PASSANT) {
+        int captured_pawn_square = move->to + (piece_color == WHITE ? -16 : 16);
+        game->board[captured_pawn_square] = EMPTY;
+    }
+    
+    // Enroque
+    if (move->flags == MOVE_CASTLE_KING || move->flags == MOVE_CASTLE_QUEEN) {
+        int rook_from, rook_to;
+        
+        if (move->flags == MOVE_CASTLE_KING) {
+            rook_from = move->from + 3;
+            rook_to = move->from + 1;
+        } else {
+            rook_from = move->from - 4;
+            rook_to = move->from - 1;
+        }
+        
+        game->board[rook_to] = game->board[rook_from];
+        game->board[rook_from] = EMPTY;
+    }
+    
+    // Actualiza posición del rey
+    if (piece_type == KING) {
+        game->king_square[piece_color] = move->to;
+    }
+    
+    // Elimina derechos de enroque si mueve el rey
+    if (piece_type == KING) {
+        if (piece_color == WHITE) {
+            game->castling_rights &= ~(CASTLE_WHITE_KING | CASTLE_WHITE_QUEEN);
+        } else {
+            game->castling_rights &= ~(CASTLE_BLACK_KING | CASTLE_BLACK_QUEEN);
+        }
+    }
+    
+    // Elimina derechos de enroque si mueve una torre
+    if (piece_type == ROOK) {
+        if (move->from == SQUARE(0, 0)) {
+            game->castling_rights &= ~CASTLE_WHITE_QUEEN;
+        } else if (move->from == SQUARE(0, 7)) {
+            game->castling_rights &= ~CASTLE_WHITE_KING;
+        } else if (move->from == SQUARE(7, 0)) {
+            game->castling_rights &= ~CASTLE_BLACK_QUEEN;
+        } else if (move->from == SQUARE(7, 7)) {
+            game->castling_rights &= ~CASTLE_BLACK_KING;
+        }
+    }
+    
+    // Elimina derechos de enroque si capturan una torre en su casilla inicial
+    if (move->captured != EMPTY && PIECE_TYPE(move->captured) == ROOK) {
+        if (move->to == SQUARE(0, 0)) {
+            game->castling_rights &= ~CASTLE_WHITE_QUEEN;
+        } else if (move->to == SQUARE(0, 7)) {
+            game->castling_rights &= ~CASTLE_WHITE_KING;
+        } else if (move->to == SQUARE(7, 0)) {
+            game->castling_rights &= ~CASTLE_BLACK_QUEEN;
+        } else if (move->to == SQUARE(7, 7)) {
+            game->castling_rights &= ~CASTLE_BLACK_KING;
+        }
+    }
+    
+    // Limpia casilla de al paso
+    game->en_passant_square = -1;
+    
+    // Establece casilla de al paso si el peón se movió dos pasos
+    if (piece_type == PAWN) {
+        int move_distance = abs(RANK(move->to) - RANK(move->from));
+        
+        if (move_distance == 2) {
+            game->en_passant_square = move->from + (move->to - move->from) / 2;
+        }
+    }
+    
+    // Reloj de medio movimiento
+    if (piece_type == PAWN || move->captured != EMPTY) {
+        game->halfmove_clock = 0;
+    } else {
+        game->halfmove_clock++;
+    }
+    
+    // Aumenta el número de jugadas completas
+    if (game->to_move == BLACK) {
+        game->fullmove_number++;
+    }
+    
+    // Cambia el turno
+    game->to_move = (game->to_move == WHITE) ? BLACK : WHITE;
 }
 
 /**
