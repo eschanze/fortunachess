@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <ctype.h>
 
+// TDAs
+#include "stack.h"
+
 // Fortuna Chess
 // Motor de ajedrez simple usando representación de tablero 0x88
 // La representación 0x88 usa un array de 128 elementos donde solo 64 son válidos
@@ -91,7 +94,20 @@ typedef struct {
     int halfmove_clock;         // Movimientos desde último movimiento de peón o captura de alguna pieza
     int fullmove_number;        // Número de jugadas completas
     int king_square[2];         // Posiciones de los reyes en formato [WHITE, BLACK]
+    stack_t *move_history;        // Pila que almacena el historial de movimientos realizados
+    int move_count;             // Contador de movimientos realizados
 } gamestate_t;
+
+// Estructura que representa una entrada en el historial de movimientos
+typedef struct {
+    move_t move;                    // El movimiento que se realizó
+    // Información adicional que debe ser restaurada (tablero, derechos de enroque, contadores de turnos, etc.)
+    int old_board[BOARD_SIZE];
+    int old_castling_rights;
+    int old_en_passant_square;
+    int old_halfmove_clock;
+    int old_fullmove_number;
+} history_entry_t;
 
 // Vectores de dirección para cada tipo de pieza (en relación a su representación en formato 0x88)
 int knight_moves[8] = {-33, -31, -18, -14, 14, 18, 31, 33};     // Movimientos de caballo (forma de L)
@@ -116,8 +132,8 @@ bool is_slide_valid(move_t *move, gamestate_t *game, int dir);
 bool is_square_attacked(gamestate_t *game, int square, int by_color);
 bool is_in_check(gamestate_t *game, int color);
 bool is_legal_move(move_t *move, gamestate_t *game);
-void make_move(move_t *move, gamestate_t *game);
-void unmake_move(move_t *move, gamestate_t *game);
+void make_move(move_t *move, gamestate_t *game, bool committed);
+void unmake_move(gamestate_t *game);
 // Generación de movimientos
 // TODO: void generate_moves(gamestate_t *game, move_list_t *list);
 // Benchmarking y testing
@@ -234,6 +250,10 @@ void init_board(gamestate_t *game) {
     // Posiciones iniciales de los reyes (columna 4, filas 0 y 7)
     game->king_square[WHITE] = SQUARE(0, 4);  // Rey blanco en e1
     game->king_square[BLACK] = SQUARE(7, 4);  // Rey negro en e8
+
+    // Inicializar pila de historial de movimientos y contador de jugadas
+    game->move_history = stack_create(sizeof(history_entry_t));
+    game->move_count = 0;
 }
 
 /**
@@ -641,7 +661,7 @@ bool is_legal_move(move_t *move, gamestate_t *game) {
     
     // Simular jugada y verificar jaque
     gamestate_t temp_game = *game;
-    make_move(move, &temp_game);
+    make_move(move, &temp_game, false);
     if (is_in_check(&temp_game, piece_color)) 
         return false;
     
@@ -653,8 +673,24 @@ bool is_legal_move(move_t *move, gamestate_t *game) {
  * Esta función asume que el movimiento ha sido validado como legal.
  * @param move: puntero al movimiento a ejecutar.
  * @param game: puntero al estado del juego a actualizar.
+ * @param committed: determina si el movimiento se deberia guardar en el historial (stack *move_history).
  */
-void make_move(move_t *move, gamestate_t *game) {
+void make_move(move_t *move, gamestate_t *game, bool committed) {
+
+    if (committed) {
+        // Guardar estado actual en el historial (stack) antes de realizar el movimiento
+        history_entry_t history;
+        history.move = *move;
+        memcpy(history.old_board, game->board, sizeof(game->board));
+        history.old_castling_rights = game->castling_rights;
+        history.old_en_passant_square = game->en_passant_square;
+        history.old_halfmove_clock = game->halfmove_clock;
+        history.old_fullmove_number = game->fullmove_number;
+        // Agregar a la pila
+        stack_push(game->move_history, &history);
+        game->move_count++;
+    }
+
     int moving_piece = move->piece;
     int piece_type = PIECE_TYPE(moving_piece);
     int piece_color = COLOR(moving_piece);
@@ -760,19 +796,40 @@ void make_move(move_t *move, gamestate_t *game) {
 
 /**
  * Deshace un movimiento (para algoritmos de búsqueda, etc.)
- * Restaura el estado del juego al momento anterior al movimiento especificado.
- * @param move: puntero al movimiento a deshacer.
+ * Restaura el estado del juego al momento anterior al movimiento jugado.
  * @param game: puntero al estado del juego a restaurar.
  */
-void unmake_move(move_t *move, gamestate_t *game) {
-    // TODO: Implementar la reversión de un movimiento.
-    // Debe restaurar:
-    //   - Posición de las piezas en el tablero
-    //   - Derechos de enroque (castling_rights)
-    //   - Casilla de en passant (en_passant_square)
-    //   - Contadores de medio-movimiento y movimiento completo (halfmove_clock, fullmove_number)
-    //   - Turno del jugador (to_move)
-    // Se hará con una pila (Stack), para guardar un historial de movimientos. El historial será parte de gamestate_t.
+void unmake_move(gamestate_t *game) {
+    if (stack_is_empty(game->move_history) || game->move_count == 0)
+        return; // No hay movimientos en el historial para deshacer
+    
+    // Obtener la información de la última entrada en el historial
+    history_entry_t history;
+    if (!stack_pop(game->move_history, &history)) {
+        printf("[DEBUG] Error al obtener la información del último movimiento jugado\n");
+        return;
+    }
+    game->move_count--;
+    
+    move_t *move = &history.move;
+    
+    // Restaurar turno
+    game->to_move = 1 - game->to_move;
+    
+    // Restaurar tablero. Se podría hacer con la información que se guarda en history.move
+    // Pero restaurar todo el tablero es más fácil/directo, aunque un poco más lento
+    // No se necesitan restaurar las piezas manualmente en caso de enroque, etc.
+    memcpy(game->board, history.old_board, sizeof(game->board));
+    
+    // Restaurar la posición de los reyes
+    if (PIECE_TYPE(move->piece) == KING)
+        game->king_square[COLOR(move->piece)] = move->from;
+
+    // Restore estado de juego
+    game->castling_rights = history.old_castling_rights;
+    game->en_passant_square = history.old_en_passant_square;
+    game->halfmove_clock = history.old_halfmove_clock;
+    game->fullmove_number = history.old_fullmove_number;
 }
 
 /**
@@ -804,7 +861,7 @@ int main() {
         
         if (parse_move(input, &move, &game)) {
             if (is_legal_move(&move, &game)) {
-                make_move(&move, &game);
+                make_move(&move, &game, true);
                 display_board(&game);
                 
                 // TODO: Agregar checks para jaque mate, aguas, etc. y terminar la partida con su correspondiente mensaje
