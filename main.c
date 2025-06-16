@@ -673,6 +673,7 @@ bool is_legal_move(move_t *move, gamestate_t *game) {
  * Esta función asume que el movimiento ha sido validado como legal.
  * @param move: puntero al movimiento a ejecutar.
  * @param game: puntero al estado del juego a actualizar.
+ * @param committed: determina si el movimiento se deberia guardar en el historial (stack *move_history).
  */
 void make_move(move_t *move, gamestate_t *game, bool committed) {
 
