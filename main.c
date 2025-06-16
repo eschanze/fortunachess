@@ -135,7 +135,11 @@ bool is_legal_move(move_t *move, gamestate_t *game);
 void make_move(move_t *move, gamestate_t *game, bool committed);
 void unmake_move(gamestate_t *game);
 // Generación de movimientos
-// TODO: void generate_moves(gamestate_t *game, move_list_t *list);
+void generate_pawn_moves(gamestate_t *game, move_list_t *list, int from);
+void generate_knight_moves(gamestate_t *game, move_list_t *list, int from);
+void generate_sliding_moves(gamestate_t *game, move_list_t *list, int from, int *directions, int num_dirs);
+void generate_king_moves(gamestate_t *game, move_list_t *list, int from);
+void generate_moves(gamestate_t *game, move_list_t *list);
 // Benchmarking y testing
 // TODO: uint64_t perft(gamestate_t *game, int depth);
 // TODO: void perft_benchmark(gamestate_t *game, int max_depth); // output detallado (sólo para debuggear)
@@ -829,6 +833,210 @@ void unmake_move(gamestate_t *game) {
     game->en_passant_square = history.old_en_passant_square;
     game->halfmove_clock = history.old_halfmove_clock;
     game->fullmove_number = history.old_fullmove_number;
+}
+
+// Generación de movimientos del peón
+void generate_pawn_moves(gamestate_t *game, move_list_t *list, int from) {
+    int piece = game->board[from];
+    int color = COLOR(piece);
+    int direction = (color == WHITE) ? 16 : -16;    // Dirección de movimiento según el color
+    int start_rank = (color == WHITE) ? 1 : 6;      // Fila inicial del peón
+    int promo_rank = (color == WHITE) ? 7 : 0;      // Fila de promoción
+    
+    // Los peones solo se pueden mover hacia adelante
+    int to = from + direction;
+    if (IS_VALID_SQUARE(to) && game->board[to] == EMPTY) {
+        if (RANK(to) == promo_rank) {
+            // En caso de promoción del peón, generar todos los tipos de piezas posibles
+            add_move(list, from, to, piece, EMPTY, QUEEN, MOVE_PROMOTION);
+            add_move(list, from, to, piece, EMPTY, ROOK, MOVE_PROMOTION);
+            add_move(list, from, to, piece, EMPTY, BISHOP, MOVE_PROMOTION);
+            add_move(list, from, to, piece, EMPTY, KNIGHT, MOVE_PROMOTION);
+        } else {
+            add_move(list, from, to, piece, EMPTY, 0, MOVE_NORMAL);
+            
+            // Los peones se pueden mover dos casillas si están en su fila inicial
+            if (RANK(from) == start_rank) {
+                to = from + 2 * direction;
+                if (IS_VALID_SQUARE(to) && game->board[to] == EMPTY) {
+                    add_move(list, from, to, piece, EMPTY, 0, MOVE_NORMAL);
+                }
+            }
+        }
+    }
+    
+    // Los peones capturan en diagonal
+    int capture_dirs[2] = {direction - 1, direction + 1};
+    for (int i = 0; i < 2; i++) {
+        to = from + capture_dirs[i];
+        if (IS_VALID_SQUARE(to)) {
+            int target = game->board[to];
+            // Captura normal
+            if (target != EMPTY && COLOR(target) != color) {
+                if (RANK(to) == promo_rank) {
+                    // Captura con promoción
+                    add_move(list, from, to, piece, target, QUEEN, MOVE_PROMOTION);
+                    add_move(list, from, to, piece, target, ROOK, MOVE_PROMOTION);
+                    add_move(list, from, to, piece, target, BISHOP, MOVE_PROMOTION);
+                    add_move(list, from, to, piece, target, KNIGHT, MOVE_PROMOTION);
+                } else {
+                    add_move(list, from, to, piece, target, 0, MOVE_CAPTURE);
+                }
+            } else if (to == game->en_passant_square) {
+                // Captura en passant (al paso)
+                add_move(list, from, to, piece, MAKE_PIECE(PAWN, color ^ BLACK), 0, MOVE_EN_PASSANT);
+            }
+        }
+    }
+}
+
+// Generación de movimientos del caballo
+void generate_knight_moves(gamestate_t *game, move_list_t *list, int from) {
+    int piece = game->board[from];
+    int color = COLOR(piece);
+    
+    // Iterar por todas las 8 posibles posiciones del caballo
+    for (int i = 0; i < 8; i++) {
+        int to = from + knight_moves[i];
+        if (IS_VALID_SQUARE(to)) {
+            int target = game->board[to];
+            if (target == EMPTY) {
+                // Movimiento normal a una casilla vacía
+                add_move(list, from, to, piece, EMPTY, 0, MOVE_NORMAL);
+            } else if (COLOR(target) != color) {
+                // Captura de pieza enemiga
+                add_move(list, from, to, piece, target, 0, MOVE_CAPTURE);
+            }
+            // Si la casilla está ocupada por una pieza propia, no se genera ni agrega el movimiento
+        }
+    }
+}
+
+// Generación de movimientos de piezas deslizantes (alfil, torre, reina)
+void generate_sliding_moves(gamestate_t *game, move_list_t *list, int from, int *directions, int num_dirs) {
+    int piece = game->board[from];
+    int color = COLOR(piece);
+    
+    // Iterar por cada dirección válida para la pieza
+    for (int d = 0; d < num_dirs; d++) {
+        int dir = directions[d];
+        // Continuar en la dirección hasta encontrar un obstáculo o el borde del tablero
+        for (int to = from + dir; IS_VALID_SQUARE(to); to += dir) {
+            int target = game->board[to];
+            if (target == EMPTY) {
+                // Casilla vacía: agregar movimiento normal
+                add_move(list, from, to, piece, EMPTY, 0, MOVE_NORMAL);
+            } else {
+                // Casilla ocupada
+                if (COLOR(target) != color) {
+                    // Pieza enemiga: agregar captura
+                    add_move(list, from, to, piece, target, 0, MOVE_CAPTURE);
+                }
+                break; // Camino bloqueado, dejar de generar en esta dirección
+            }
+        }
+    }
+}
+
+// Generación de movimientos del rey
+void generate_king_moves(gamestate_t *game, move_list_t *list, int from) {
+    int piece = game->board[from];
+    int color = COLOR(piece);
+    
+    // Movimientos normales del rey (una casilla en cualquier dirección)
+    for (int i = 0; i < 8; i++) {
+        int to = from + king_moves[i];
+        if (IS_VALID_SQUARE(to)) {
+            int target = game->board[to];
+            if (target == EMPTY) {
+                // Movimiento a casilla vacía
+                add_move(list, from, to, piece, EMPTY, 0, MOVE_NORMAL);
+            } else if (COLOR(target) != color) {
+                // Captura de pieza enemiga
+                add_move(list, from, to, piece, target, 0, MOVE_CAPTURE);
+            }
+        }
+    }
+    
+    // Enroque
+    if (color == WHITE) {
+        // Enroque corto de las piezas blancas (lado del rey)
+        if ((game->castling_rights & CASTLE_WHITE_KING) &&
+            game->board[0x05] == EMPTY && game->board[0x06] == EMPTY &&
+            !is_square_attacked(game, 0x04, BLACK) &&
+            !is_square_attacked(game, 0x05, BLACK) &&
+            !is_square_attacked(game, 0x06, BLACK)) {
+            add_move(list, from, 0x06, piece, EMPTY, 0, MOVE_CASTLE_KING);
+        }
+        
+        // Enroque largo de las piezas blancas (lado de la reina)
+        if ((game->castling_rights & CASTLE_WHITE_QUEEN) &&
+            game->board[0x03] == EMPTY && game->board[0x02] == EMPTY && game->board[0x01] == EMPTY &&
+            !is_square_attacked(game, 0x04, BLACK) &&
+            !is_square_attacked(game, 0x03, BLACK) &&
+            !is_square_attacked(game, 0x02, BLACK)) {
+            add_move(list, from, 0x02, piece, EMPTY, 0, MOVE_CASTLE_QUEEN);
+        }
+    } else {
+        // Enroque corto de las piezas negras (lado del rey)
+        if ((game->castling_rights & CASTLE_BLACK_KING) &&
+            game->board[0x75] == EMPTY && game->board[0x76] == EMPTY &&
+            !is_square_attacked(game, 0x74, WHITE) &&
+            !is_square_attacked(game, 0x75, WHITE) &&
+            !is_square_attacked(game, 0x76, WHITE)) {
+            add_move(list, from, 0x76, piece, EMPTY, 0, MOVE_CASTLE_KING);
+        }
+        
+        // Enroque largo de piezas negras (lado de la reina)
+        if ((game->castling_rights & CASTLE_BLACK_QUEEN) &&
+            game->board[0x73] == EMPTY && game->board[0x72] == EMPTY && game->board[0x71] == EMPTY &&
+            !is_square_attacked(game, 0x74, WHITE) &&
+            !is_square_attacked(game, 0x73, WHITE) &&
+            !is_square_attacked(game, 0x72, WHITE)) {
+            add_move(list, from, 0x72, piece, EMPTY, 0, MOVE_CASTLE_QUEEN);
+        }
+    }
+}
+
+/**
+ * Genera todos los movimientos legales posibles para el jugador en turno.
+ * Llama a las funciones específicas según el tipo de pieza presente en cada casilla.
+ * @param game: puntero al estado actual del juego.
+ * @param list: puntero a la lista donde se agregarán todos los movimientos válidos.
+ */
+void generate_moves(gamestate_t *game, move_list_t *list) {
+    list->count = 0;
+    
+    for (int square = 0; square < BOARD_SIZE; square++) {
+        if (!IS_VALID_SQUARE(square)) continue;
+        
+        int piece = game->board[square];
+        if (piece == EMPTY || COLOR(piece) != game->to_move) continue;
+        
+        int piece_type = PIECE_TYPE(piece);
+        
+        switch (piece_type) {
+            case PAWN:
+                generate_pawn_moves(game, list, square);
+                break;
+            case KNIGHT:
+                generate_knight_moves(game, list, square);
+                break;
+            case BISHOP:
+                generate_sliding_moves(game, list, square, bishop_dirs, 4);
+                break;
+            case ROOK:
+                generate_sliding_moves(game, list, square, rook_dirs, 4);
+                break;
+            case QUEEN:
+                generate_sliding_moves(game, list, square, bishop_dirs, 4);
+                generate_sliding_moves(game, list, square, rook_dirs, 4);
+                break;
+            case KING:
+                generate_king_moves(game, list, square);
+                break;
+        }
+    }
 }
 
 /**
