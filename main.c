@@ -673,7 +673,6 @@ bool is_legal_move(move_t *move, gamestate_t *game) {
  * Esta función asume que el movimiento ha sido validado como legal.
  * @param move: puntero al movimiento a ejecutar.
  * @param game: puntero al estado del juego a actualizar.
- * @param committed: determina si el movimiento se deberia guardar en el historial (stack *move_history).
  */
 void make_move(move_t *move, gamestate_t *game, bool committed) {
 
@@ -773,9 +772,8 @@ void make_move(move_t *move, gamestate_t *game, bool committed) {
     if (piece_type == PAWN) {
         int move_distance = abs(RANK(move->to) - RANK(move->from));
         
-        if (move_distance == 2) {
+        if (move_distance == 2)
             game->en_passant_square = move->from + (move->to - move->from) / 2;
-        }
     }
     
     // Reloj de medio movimiento
@@ -786,9 +784,8 @@ void make_move(move_t *move, gamestate_t *game, bool committed) {
     }
     
     // Aumenta el número de jugadas completas
-    if (game->to_move == BLACK) {
+    if (game->to_move == BLACK)
         game->fullmove_number++;
-    }
     
     // Cambia el turno
     game->to_move = (game->to_move == WHITE) ? BLACK : WHITE;
@@ -796,7 +793,8 @@ void make_move(move_t *move, gamestate_t *game, bool committed) {
 
 /**
  * Deshace un movimiento (para algoritmos de búsqueda, etc.)
- * Restaura el estado del juego al momento anterior al movimiento jugado.
+ * Restaura el estado del juego al momento anterior al movimiento especificado.
+ * @param move: puntero al movimiento a deshacer.
  * @param game: puntero al estado del juego a restaurar.
  */
 void unmake_move(gamestate_t *game) {
