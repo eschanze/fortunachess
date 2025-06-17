@@ -141,8 +141,8 @@ void generate_sliding_moves(gamestate_t *game, move_list_t *list, int from, int 
 void generate_king_moves(gamestate_t *game, move_list_t *list, int from);
 void generate_moves(gamestate_t *game, move_list_t *list);
 // Benchmarking y testing
-// TODO: uint64_t perft(gamestate_t *game, int depth);
-// TODO: void perft_benchmark(gamestate_t *game, int max_depth); // output detallado (sólo para debuggear)
+uint64_t perft(gamestate_t *game, int depth);
+void perft_benchmark(gamestate_t *game, int max_depth); // output detallado (sólo para debuggear)
 
 /**
  * Convierte un tipo de pieza a su carácter representativo.
@@ -1040,6 +1040,64 @@ void generate_moves(gamestate_t *game, move_list_t *list) {
 }
 
 /**
+ * Realiza un conteo recursivo de nodos a partir del estado actual del juego.
+ * Utilizado para pruebas (perft) de generación de movimientos.
+ *  Se usa para verificar que todas las reglas de movimiento estén implementadas correctamente.
+ * @param game: puntero al estado actual del juego.
+ * @param depth: profundidad máxima a explorar.
+ * @return el número total de nodos generados hasta esa profundidad.
+ */
+uint64_t perft(gamestate_t *game, int depth) {
+    // Caso base
+    if (depth == 0) return 1;
+
+    move_list_t list;
+    generate_moves(game, &list);
+
+    uint64_t total = 0;
+    gamestate_t backup;
+
+    for (int i = 0; i < list.count; i++) {
+        move_t move = list.moves[i];
+        if (!is_legal_move(&move, game)) continue;
+
+        // Guardar el estado del juego
+        backup = *game;
+        make_move(&move, game, false);
+        // Llamada recursiva
+        total += perft(game, depth - 1);
+        // Devolver la partida a su estado previo
+        *game = backup;
+    }
+
+    return total;
+}
+
+/**
+ * Ejecuta pruebas de rendimiento de generación de movimientos (perft) hasta cierta profundidad.
+ * Muestra en consola el tiempo que toma y el número de nodos por segundo.
+ * @param game: puntero al estado actual del juego.
+ * @param max_depth: profundidad máxima que se quiere evaluar.
+ */
+void perft_benchmark(gamestate_t *game, int max_depth) {
+    printf("Resultados PERFT:\n");
+    printf("========================\n\n");
+    
+    for (int depth = 1; depth <= max_depth; depth++) {
+        clock_t start = clock();
+        uint64_t nodes = perft(game, depth);
+        clock_t end = clock();
+        
+        double time_taken = ((double)(end - start)) / CLOCKS_PER_SEC;
+        double nps = (time_taken > 0) ? nodes / time_taken : 0;
+        
+        printf("Profundidad %d: %12llu nodos en %8.3f segundos (%10.0f NPS)\n", 
+               depth, (unsigned long long)nodes, time_taken, nps);
+    }
+    printf("\n");
+}
+
+/**
  * Bucle principal del juego.
  * Se encarga de recibir los movimientos del usuario y de mostrar el tablero.
  * Por el momento, no existe un menú, y solo se puede jugar una partida.
@@ -1048,6 +1106,10 @@ int main() {
     gamestate_t game;
     move_t move;
     char input[10];
+
+    // Realizar 
+    init_board(&game);
+    perft_benchmark(&game, 6);
     
     printf("¡Bienvenido a Fortuna Chess!\n");
     printf("Esta es una versión experimental, por lo que gran parte de las funcionalidades no están disponibles.\n");
