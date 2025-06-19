@@ -8,6 +8,8 @@
 
 // Definiciones principales
 #include "chess.h"
+// Función de hash para libro de apertura
+#include "zobrist.h"
 
 //// Prototipos de funciones
 // Funciones auxiliares
@@ -184,6 +186,8 @@ void display_board(gamestate_t *game) {
            (game->castling_rights & CASTLE_WHITE_QUEEN) ? "Q" : "",
            (game->castling_rights & CASTLE_BLACK_KING) ? "k" : "",
            (game->castling_rights & CASTLE_BLACK_QUEEN) ? "q" : "");
+
+    printf("[ DEBUG ] Hash de la posición: %llu\n", zobrist_hash(game));
 
     // [DEBUG] Imprimir la casilla "fantasma" que deja un peón que avanza 2 casillas
     // Útil para poder testear que las reglas de en passant estén funcionando correctamente
@@ -990,6 +994,19 @@ void perft_benchmark(gamestate_t *game, int max_depth) {
     printf("\n");
 }
 
+// Función auxiliar para poder testear funcionamiento de Zobrist hashing + TDA hashtable
+// Simula el movimiento e2e4 en el tablero
+// Asume que gamestate_t *game es un puntero al estado del juego en posición inicial
+void make_dummy_e2e4(gamestate_t *game) {
+    int from = SQUARE(1, 4);  // e2 (0x14)
+    int to = SQUARE(3, 4);    // e4 (0x34)
+    game->board[to] = game->board[from];
+    game->board[from] = EMPTY;
+    game->en_passant_square = SQUARE(2, 4);  // e3 (0x24)
+    game->to_move = BLACK;
+    game->move_count++;
+}
+
 /**
  * Bucle principal del juego.
  * Se encarga de recibir los movimientos del usuario y de mostrar el tablero.
@@ -1004,48 +1021,53 @@ int main() {
     init_board(&game);
     perft_benchmark(&game, 5);
     
-    // Test funcionamiento de TDA tabla hash
+    // Test funcionamiento de TDA tabla hash + Zobrist hashing
+    zobrist_init();
     hashtable_t *book = hashtable_create();
     if (!book) {
         printf("[ HASHTABLE ] No se pudo crear un libro de aperturas como tabla hash\n");
         return 1;
     }
 
-    // Por el momento estamos inventando un número que representa el tablero
-    // TODO: Implementar Zobrist hashing para transformar el array 0x88 a una long int
-    // Esta long int será la key para las entradas en la tabla hash.
-    uint64_t key_initial_pos = 12345;
-    uint64_t key_after_e4 = 67890;
+    // Obtener clave Zobrist para posición inicial
+    uint64_t key_initial = zobrist_hash(&game);
+    printf("[ ZOBRIST ] Clave posición inicial: %llu\n", key_initial);
+
+    // Simulamos e2e4 y obtenemos la nueva clave
+    make_dummy_e2e4(&game);
+    uint64_t key_after_e4 = zobrist_hash(&game);
+    printf("[ ZOBRIST ] Clave después de e2e4: %llu\n", key_after_e4);
 
     // Agregamos movimientos recomendados para las dos posiciones
-    hashtable_add_move(book, key_initial_pos, "e2e4", 10);
-    hashtable_add_move(book, key_initial_pos, "d2d4", 8);
-    hashtable_add_move(book, key_initial_pos, "c2c4", 6);
+    hashtable_add_move(book, key_initial, "e2e4", 10);
+    hashtable_add_move(book, key_initial, "d2d4", 8);
     hashtable_add_move(book, key_after_e4, "e7e5", 10);
     hashtable_add_move(book, key_after_e4, "c7c5", 9);
 
     char recommended_move[MAX_MOVE_STR];
-    if (hashtable_lookup_best_move(book, key_initial_pos, recommended_move)) {
+    if (hashtable_lookup_best_move(book, key_initial, recommended_move))
         printf("[ HASHTABLE ] Movimiento recomendado para posición inicial: %s\n", recommended_move);
-    } else {
+    else
         printf("[ HASHTABLE ] No se encontró un movimiento para la posición inicial.\n");
-    }
 
-    if (hashtable_lookup_best_move(book, key_after_e4, recommended_move)) {
-        printf("[ HASHTABLE ] Mejor movimiento después de e2e4: %s\n", recommended_move);
-    } else {
-        printf("[ HASHTABLE ] No se encontró un movimiento para la posición después de 1. e2e4\n");
-    }
+    if (hashtable_lookup_best_move(book, key_after_e4, recommended_move))
+        printf("[ HASHTABLE ] Movimiento recomendado después de e2e4: %s\n", recommended_move);
+    else
+        printf("[ HASHTABLE ] No se encontró un movimiento para la posición después de 1. e2e4.\n");
 
     hashtable_destroy(book);
     
+    // Finalizados los tests, se inicializa el tablero nuevamente:
+    init_board(&game);
+
+    // Menú principal
     printf("\n¡Bienvenido a Fortuna Chess!\n");
     printf("Esta es una versión experimental, por lo que gran parte de las funcionalidades no están disponibles.\n");
     printf("Ingrese movimientos en formato: e2e4\n");
     printf("Escriba 'ayuda' para ver todos los comandos disponibles\n");
     printf("Escriba 'salir' para salir\n\n");
     
-    init_board(&game);
+    // Se muestra el tablero en pantalla
     display_board(&game);
     
     while (1) {
