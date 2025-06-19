@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-stack_t* stack_create(size_t data_size) {
-    stack_t *stack = malloc(sizeof(stack_t));
+chess_stack_t* stack_create(size_t data_size) {
+    chess_stack_t *stack = malloc(sizeof(chess_stack_t));
     if (!stack) return NULL;
 
     stack->top = NULL;
@@ -12,13 +12,13 @@ stack_t* stack_create(size_t data_size) {
     return stack;
 }
 
-void stack_destroy(stack_t *stack) {
+void stack_destroy(chess_stack_t *stack) {
     if (!stack) return;
     stack_clear(stack);
     free(stack);
 }
 
-bool stack_push(stack_t *stack, const void *data) {
+bool stack_push(chess_stack_t *stack, const void *data) {
     if (!stack || !data) return false;
 
     stack_node_t *new_node = malloc(sizeof(stack_node_t));
@@ -37,7 +37,7 @@ bool stack_push(stack_t *stack, const void *data) {
     return true;
 }
 
-bool stack_pop(stack_t *stack, void *out) {
+bool stack_pop(chess_stack_t *stack, void *out) {
     if (!stack || !stack->top || !out) return false;
 
     stack_node_t *top_node = stack->top;
@@ -51,20 +51,20 @@ bool stack_pop(stack_t *stack, void *out) {
     return true;
 }
 
-void* stack_peek(stack_t *stack) {
+void* stack_peek(chess_stack_t *stack) {
     if (!stack || !stack->top) return NULL;
     return stack->top->data;
 }
 
-bool stack_is_empty(stack_t *stack) {
+bool stack_is_empty(chess_stack_t *stack) {
     return (stack == NULL || stack->top == NULL);
 }
 
-int stack_size(stack_t *stack) {
+int stack_size(chess_stack_t *stack) {
     return stack ? stack->size : 0;
 }
 
-void stack_clear(stack_t *stack) {
+void stack_clear(chess_stack_t *stack) {
     if (!stack) return;
     while (stack->top) {
         stack_node_t *temp = stack->top;
