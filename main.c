@@ -262,24 +262,20 @@ int main() {
     display_board(&game);
     
     while (1) {
-        // Evaluar estado del juego
+        // Evaluar estado del juego, para saber si el bucle principal debe terminar
         game_result_t result = evaluate_game_state(&game);
-        
         if (result != GAME_ONGOING) {
             printf("\n=== FINAL DEL JUEGO ===\n");
+            // Mostrar en pantalla al ganador (o si es un empate, comunicar la razón)
             printf("%s\n", get_game_result_name(result));
             break;
         }
 
-        move_t best_move = find_best_move(&game, 6);
-        //printf("Ingrese movimiento o comando: ");
-        //if (fgets(input, sizeof(input), stdin) == NULL) break;
+        printf("Ingrese movimiento o comando: ");
+        if (fgets(input, sizeof(input), stdin) == NULL) break;
         
         // Remover newline
-        //input[strcspn(input, "\n")] = '\0';
-
-        make_move(&best_move, &game, false);
-        display_board(&game);
+        input[strcspn(input, "\n")] = '\0';
         
         if (strcmp(input, "salir") == 0) {
             break;
