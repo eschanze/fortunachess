@@ -12,10 +12,10 @@ typedef struct {
 } move_entry_t;
 
 typedef struct {
-    uint64_t key;                          // Zobrist key
-    move_entry_t moves[MAX_MOVES_PER_POSITION];
+    uint64_t key;                                   // Zobrist key
+    move_entry_t moves[MAX_MOVES_PER_POSITION];     // Lista de move_entry (movimiento 0x88 + prioridad)
     int move_count;
-    bool occupied;                         // Flag para indicar que la key está ocupada
+    bool occupied;                                  // Flag para indicar que la key está ocupada
 } hashtable_entry_t;
 
 typedef struct {

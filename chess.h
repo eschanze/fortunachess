@@ -1,10 +1,14 @@
 #pragma once
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <time.h>
 // TDAs
 #include "stack.h"
 #include "hashtable.h"
 
-// Fortuna Chess
-// Motor de ajedrez simple usando representación de tablero 0x88
+
 // La representación 0x88 usa un array de 128 elementos donde solo 64 son válidos
 // Permite detección rápida de casillas válidas usando operación AND con 0x88
 // Se definen los siguientes macros para operaciones binarias para mejorar la legibilidad del código:
@@ -93,9 +97,59 @@ typedef struct {
     int old_fullmove_number;
 } history_entry_t;
 
+// Estructura que guarda información acerca del estado de juego, menos el tablero
+// Se utiliza para almacenar la información del turno anterior, y poder deshacer de manera rápida
+typedef struct {
+    int castling_rights;
+    int en_passant_square;
+    int halfmove_clock;
+    int fullmove_number;
+    int captured_piece;
+    int king_square[2];
+} fast_undo_t;
+
 // Declaración de los vectores externos de movimiento
 // Se definen en chess.c
 extern int knight_moves[8];
 extern int king_moves[8];
 extern int bishop_dirs[4];
 extern int rook_dirs[4];
+
+// Todas los posibles casos en los que puede terminar una partida
+typedef enum {
+    GAME_ONGOING,           // Juego en curso
+    GAME_CHECKMATE_WHITE,   // Jaque mate - ganan las blancas
+    GAME_CHECKMATE_BLACK,   // Jaque mate - ganan las negras
+    GAME_STALEMATE,         // Tablas por ahogado
+    GAME_DRAW_50_MOVES,     // Tablas por regla de 50 movimientos
+    GAME_DRAW_REPETITION,   // Tablas por repetición (implementación futura)
+    GAME_DRAW_MATERIAL      // Tablas por material insuficiente
+} game_result_t;
+
+// Inicialización
+void init_board(gamestate_t *game);
+// Lógica del juego (legalidad, generación de movimientos, etc.)
+bool is_slide_valid(move_t *move, gamestate_t *game, int dir);
+bool is_square_attacked(gamestate_t *game, int square, int by_color);
+bool is_in_check(gamestate_t *game, int color);
+bool is_legal_move(move_t *move, gamestate_t *game);
+void make_move(move_t *move, gamestate_t *game, bool committed);
+void unmake_move(gamestate_t *game);
+// Versión alternativa la función unmake_move, que no utiliza pilas
+void prepare_fast_undo(gamestate_t *game, move_t *move, fast_undo_t *undo_info);
+void fast_unmake_move(gamestate_t *game, move_t *move, fast_undo_t *undo_info);
+// Generación de movimientos
+void generate_pawn_moves(gamestate_t *game, move_list_t *list, int from);
+void generate_knight_moves(gamestate_t *game, move_list_t *list, int from);
+void generate_sliding_moves(gamestate_t *game, move_list_t *list, int from, int *directions, int num_dirs);
+void generate_king_moves(gamestate_t *game, move_list_t *list, int from);
+void generate_moves(gamestate_t *game, move_list_t *list);
+// Condiciones de fin de partida
+const char* get_game_result_name(game_result_t result);
+bool has_legal_moves(gamestate_t *game);
+void count_material(gamestate_t *game, int white_material[5], int black_material[5]);
+bool is_insufficient_material(gamestate_t *game);
+game_result_t evaluate_game_state(gamestate_t *game);
+// Benchmarking y testing
+uint64_t perft(gamestate_t *game, int depth);
+void perft_benchmark(gamestate_t *game, int max_depth); // output detallado (sólo para debuggear)
