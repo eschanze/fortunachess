@@ -23,10 +23,16 @@ char piece_to_char(int piece);
 int char_to_piece(char c);
 int algebraic_to_square(const char *algebraic);
 void square_to_algebraic(int square, char *algebraic);
-// Menú principal
+// Interfaz
 void display_board(gamestate_t *game, int p1);
 // Input
 bool parse_move(const char *move_str, move_t *move, gamestate_t *game);
+// Menú principal
+void main_menu();
+void game_submenu(int is_bot);
+int time_submenu();
+int piece_submenu();
+void start_game(int player_piece, int time_format, int is_bot);
 
 /**
  * Convierte un tipo de pieza a su carácter representativo.
@@ -65,7 +71,7 @@ int char_to_piece(char c) {
  * Convierte notación algebraica a índice 0x88.
  * Ej: "e4" => SQUARE(3, 4)
  * @param algebraic: string con notación algebraica.
- * @return índice del tablero en formato 0x88.
+ * @return índice del tablero en format 0x88.
  */
 int algebraic_to_square(const char *algebraic) {
     if (strlen(algebraic) != 2) return -1;
@@ -81,7 +87,7 @@ int algebraic_to_square(const char *algebraic) {
 /**
  * Convierte un índice 0x88 a notación algebraica.
  * Ej: SQUARE(3, 4) => "e4"
- * @param square: índice del tablero en formato 0x88.
+ * @param square: índice del tablero en format 0x88.
  * @param algebraic: buffer donde se guarda la notación.
  */
 void square_to_algebraic(int square, char *algebraic) {
@@ -177,7 +183,7 @@ bool parse_move(const char *move_str, move_t *move, gamestate_t *game) {
             (COLOR(move->piece) == BLACK && dest_rank == 0)) {
             move->flags = MOVE_PROMOTION;
             // Promoción por defecto a reina
-            // TODO: Agregar las otras opciones de promoción (el usuario debe poder elegir)
+            // TODO: Agregar las otras optiones de promoción (el usuario debe poder elegir)
             move->promotion = QUEEN;
         }
     }
@@ -185,50 +191,108 @@ bool parse_move(const char *move_str, move_t *move, gamestate_t *game) {
     return true;
 }
 
-// Función auxiliar para poder testear funcionamiento de la función Zobrist Hashing + TDA hashtable
-// Simula el movimiento e2e4 en el tablero
-// Asume que gamestate_t *game es un puntero al estado del juego en posición inicial
-void make_dummy_e2e4(gamestate_t *game) {
-    int from = SQUARE(1, 4);  // e2 (0x14)
-    int to = SQUARE(3, 4);    // e4 (0x34)
-    game->board[to] = game->board[from];
-    game->board[from] = EMPTY;
-    game->en_passant_square = SQUARE(2, 4);  // e3 (0x24)
-    game->to_move = BLACK;
-    game->move_count++;
+/**
+ * Muestra el menú principal del juego.
+ * Permite elegir entre jugar contra otro jugador, contra la CPU, o salir.
+ */
+void main_menu() {
+    int option;
+    do {
+        puts("◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎");
+        puts("◻︎        ♜   𝓕𝓞𝓡𝓣𝓤𝓝𝓐   𝓒𝓗𝓔𝓢𝓢   ♜        ◻︎");
+        puts("◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎");
+        puts("Bienvenido/a, elija una opción:");
+
+        puts("1. Jugador vs Jugador (PvP) ⚔︎");
+        puts("2. Jugador vs CPU (PvE) ⌨︎");
+        puts("3. Salir :(");
+
+        scanf("%d", &option);
+        
+        switch(option) {
+            case 1:
+                game_submenu(0); // is_bot = 0 para PvP
+                break;
+            case 2:
+                game_submenu(1); // is_bot = 1 para PvE
+                break;
+            case 3:
+                puts("\nSaliendo de Fortuna Chess. Muchas gracias por jugar, vuelva pronto ♞");
+                break;
+            default:
+                puts("\noption no válida. Por favor, vuelva a intentarlo:");
+                puts("Presione ENTER para volver al menú...");
+                getchar();
+                getchar();
+        }
+    } while (option != 3);
 }
 
-int submenu_tiempo() {
-    int opcion = 0;
+/**
+ * Muestra el submenú de configuración de partida y lanza el juego.
+ * Permite elegir formato de tiempo y color de pieza.
+ * @param is_bot: 1 si se juega contra la CPU, 0 si es PvP.
+ */
+void game_submenu(int is_bot) {
+    int time_format = 0;
+    int player_piece = 0;
+    
+    // Elección de format
+    time_format = time_submenu();
+    if (time_format == -1) 
+        return; // Volver al menú principal
+    
+    // Elección de pieza
+    player_piece = piece_submenu();
+    if (player_piece == -1) 
+        return; // Volver al menú principal
+    
+    // Empezar el juego
+    start_game(player_piece, time_format, is_bot);
+    exit(EXIT_SUCCESS);
+}
 
-    while (opcion < 1 || opcion > 4) {
-        puts("\n⏱︎ FORMATO DE TIEMPO ⏱︎");
+/**
+ * Muestra el submenú de selección de formato de tiempo.
+ * Permite al usuario elegir entre distintos controles de tiempo o volver al menú principal.
+ * @return número correspondiente al formato elegido, o -1 para volver al menú principal.
+ */
+int time_submenu() {
+    int option = 0;
+
+    while (option < 1 || option > 4) {
+        puts("\n⏱︎ format DE TIEMPO ⏱︎");
         puts("1. Blitz (3 min)");
         puts("2. Rápido (10 min)");
         puts("3. Sin tiempo");
         puts("4. Volver al menú principal");
         puts("Elija una opción: ");
 
-        scanf("%d", &opcion);
+        scanf("%d", &option);
         
-        if (opcion < 1 || opcion > 4) {
-            puts("\nOpcion no válida. Por favor, vuelva a intentarlo...");
+        if (option < 1 || option > 4) {
+            puts("\noption no válida. Por favor, vuelva a intentarlo...");
             puts("Presione ENTER para volver al submenú...");
             getchar();
             getchar();
         }
     }
     
-    if (opcion == 4) {
+    if (option == 4) {
         return -1; // Volver al menú principal
     }
-    return opcion;
+    return option;
 }
 
-int submenu_piezas() {
-    int opcion = 0;
+/**
+ * Muestra el submenú de selección de color de piezas.
+ * Permite al usuario elegir jugar con blancas, negras o aleatorio.
+ * @return número correspondiente a la elección, o -1 para volver al menú principal.
+ */
+int piece_submenu() {
+    int option = 0;
 
-    while (opcion < 1 || opcion > 4) {
+    while (option < 1 || option > 4) {
         puts("\n𖣯 SELECCIÓN DE PIEZAS 𖣯");
         puts("1. Blancas");
         puts("2. Negras");
@@ -236,28 +300,34 @@ int submenu_piezas() {
         puts("4. Volver al menú principal");
         puts("Elija una opción: ");
 
-        scanf("%d", &opcion);   
+        scanf("%d", &option);   
 
-        if (opcion < 1 || opcion > 4) {
-            puts("\nOpcion no válida. Por favor, vuelva a intentarlo...");
+        if (option < 1 || option > 4) {
+            puts("\noption no válida. Por favor, vuelva a intentarlo...");
             puts("Presione ENTER para volver al submenú...");
             getchar();
             getchar();
         }
     }
     
-    if (opcion == 4) {
+    if (option == 4) {
         return -1; // Volver al menú principal
     }
-    return opcion;
+    return option;
 }
 
-void iniciar_partida(int j1, int formato, int es_bot) {
+/**
+ * Inicia el juego con los parámetros elegidos.
+ * @param player_piece: color elegido por el jugador.
+ * @param time_format: formato de tiempo elegido.
+ * @param is_bot: 1 si se juega contra la CPU, 0 si es PvP.
+ */
+void start_game(int p1, int format, int is_bot) {
     puts("\n♚ INICIANDO PARTIDA ♛");
     // TODO: IMPLEMENTAR ASIGNACIÓN ALEATORIA
-    printf("Jugador 1: %s\n", j1 == 1 ? "Blancas" : j1 == 2 ? "Negras" : "Aleatorio");
-    printf("Formato: %s\n", formato == 1 ? "Blitz" : formato == 2 ? "Rápido" : "Sin tiempo");
-    printf("Modo: %s\n", es_bot ? "vs CPU" : "vs Jugador");
+    printf("Jugador 1: %s\n", p1 == 1 ? "Blancas" : p1 == 2 ? "Negras" : "Aleatorio");
+    printf("format: %s\n", format == 1 ? "Blitz" : format == 2 ? "Rápido" : "Sin tiempo");
+    printf("Modo: %s\n", is_bot ? "vs CPU" : "vs Jugador");
     puts("¡Que comience el juego! :)\n");
 
     gamestate_t game;
@@ -270,12 +340,14 @@ void iniciar_partida(int j1, int formato, int es_bot) {
     // Menú principal
 
     // Se muestra el tablero en pantalla
-    display_board(&game, j1);
+    display_board(&game, p1);
 
-    printf("Ingrese movimientos en formato: e2e4\n");
+    printf("Ingrese movimientos en format: e2e4\n");
     printf("Escriba 'ayuda' para ver todos los comandos disponibles\n");
     printf("Escriba 'salir' para salir\n\n");
-    
+    int ch;
+    while ((ch = getchar()) != '\n' && ch != EOF); // limpia el búfer por si quedó un \n pendiente después de los scanf(...)
+
     while (1) {
         // Evaluar estado del juego, para saber si el bucle principal debe terminar
         game_result_t result = evaluate_game_state(&game);
@@ -317,7 +389,7 @@ void iniciar_partida(int j1, int formato, int es_bot) {
                 printf("No hay movimiento que deshacer. (Posición inicial)\n");
             } else {
                 unmake_move(&game);
-                display_board(&game, j1);
+                display_board(&game, p1);
                 printf("Movimiento deshecho.\n");
             }
             continue;
@@ -326,7 +398,7 @@ void iniciar_partida(int j1, int formato, int es_bot) {
         if (parse_move(input, &move, &game)) {
             if (is_legal_move(&move, &game)) {
                 make_move(&move, &game, true);
-                display_board(&game, j1);
+                display_board(&game, p1);
                 // TODO: Agregar checks para jaque mate, aguas, etc. y terminar la partida con su correspondiente mensaje
                 if (is_in_check(&game, game.to_move)) {
                     printf("¡Jaque!\n");
@@ -335,7 +407,7 @@ void iniciar_partida(int j1, int formato, int es_bot) {
                 printf("¡Movimiento ilegal!\n");
             }
         } else {
-            printf("Formato de movimiento inválido. Use el formato [origen][destino]. Ejemplo: e2e4\n");
+            printf("format de movimiento inválido. Use el format [origen][destino]. Ejemplo: e2e4\n");
             printf("O escriba 'ayuda' para ver todos los comandos disponibles.\n");
         }
     }
@@ -343,57 +415,17 @@ void iniciar_partida(int j1, int formato, int es_bot) {
     printf("¡Gracias por jugar!\n");
 }
 
-void submenu_partida(int es_bot) {
-    int formato = 0;
-    int j1 = 0;
-    
-    // Elección de formato
-    formato = submenu_tiempo();
-    if (formato == -1) 
-        return; // Volver al menú principal
-    
-    // Elección de pieza
-    j1 = submenu_piezas();
-    if (j1 == -1) 
-        return; // Volver al menú principal
-    
-    // Empezar el juego
-    iniciar_partida(j1, formato, es_bot);
-    exit(EXIT_SUCCESS);
-}
-
-void menu_principal() {
-    int opcion;
-    
-    do {
-        puts("◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎");
-        puts("◻︎        ♜   𝓕𝓞𝓡𝓣𝓤𝓝𝓐   𝓒𝓗𝓔𝓢𝓢   ♜        ◻︎");
-        puts("◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎");
-        puts("Bienvenido/a, elija una opción:");
-
-        puts("1. Jugador vs Jugador (PvP) ⚔︎");
-        puts("2. Jugador vs CPU (PvE) ⌨︎");
-        puts("3. Salir :(");
-
-        scanf("%d", &opcion);
-        
-        switch(opcion) {
-            case 1:
-                submenu_partida(0); // es_bot = 0 para PvP
-                break;
-            case 2:
-                submenu_partida(1); // es_bot = 1 para PvE
-                break;
-            case 3:
-                puts("\nSaliendo de Fortuna Chess. Muchas gracias por jugar, vuelva pronto ♞");
-                break;
-            default:
-                puts("\nOpcion no válida. Por favor, vuelva a intentarlo:");
-                puts("Presione ENTER para volver al menú...");
-                getchar();
-                getchar();
-        }
-    } while (opcion != 3);
+// Función auxiliar para poder testear funcionamiento de la función Zobrist Hashing + TDA hashtable
+// Simula el movimiento e2e4 en el tablero
+// Asume que gamestate_t *game es un puntero al estado del juego en posición inicial
+void make_dummy_e2e4(gamestate_t *game) {
+    int from = SQUARE(1, 4);  // e2 (0x14)
+    int to = SQUARE(3, 4);    // e4 (0x34)
+    game->board[to] = game->board[from];
+    game->board[from] = EMPTY;
+    game->en_passant_square = SQUARE(2, 4);  // e3 (0x24)
+    game->to_move = BLACK;
+    game->move_count++;
 }
 
 /**
@@ -408,9 +440,9 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     #endif
 
+    // Initializar estructuras principales para los tests
     gamestate_t game;
     move_t move;
-    char input[10];
 
     // Realizar benchmark PERFT
     init_board(&game);
@@ -457,7 +489,7 @@ int main() {
     hashtable_destroy(book);
 
     // Menú principal
-    menu_principal();
+    main_menu();
     
     return 0;
 }
