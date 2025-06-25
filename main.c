@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // Fortuna Chess
 // Motor de ajedrez simple usando representación de tablero 0x88
 // Definiciones principales
@@ -20,7 +24,7 @@ int char_to_piece(char c);
 int algebraic_to_square(const char *algebraic);
 void square_to_algebraic(int square, char *algebraic);
 // Menú principal
-void display_board(gamestate_t *game);
+void display_board(gamestate_t *game, int p1);
 // Input
 bool parse_move(const char *move_str, move_t *move, gamestate_t *game);
 
@@ -95,7 +99,7 @@ void square_to_algebraic(int square, char *algebraic) {
  * Muestra el estado actual del tablero en la terminal.
  * @param game: puntero al estado del juego actual.
  */
-void display_board(gamestate_t *game) {
+void display_board(gamestate_t *game, int p1) {
     printf("\n    a b c d e f g h\n");
     printf("  +-----------------+\n");
     
@@ -114,7 +118,7 @@ void display_board(gamestate_t *game) {
     printf("    a b c d e f g h\n\n");
 
     // Muestra de quién es el turno
-    printf("Turno: %s\n", game->to_move == WHITE ? "Blancas" : "Negras");
+    printf("Turno: %s (Jugador %d)\n", game->to_move == WHITE ? "Blancas" : "Negras", game->to_move == WHITE ? (p1 == 1 ? 1 : 2) : (p1 == 1 ? 2 : 1));
 
     // Muestra los derechos de enroque disponibles
     printf("Derechos de enroque: %s%s%s%s\n",
@@ -194,72 +198,83 @@ void make_dummy_e2e4(gamestate_t *game) {
     game->move_count++;
 }
 
-/**
- * Bucle principal del juego.
- * Se encarga de recibir los movimientos del usuario y de mostrar el tablero.
- * Por el momento, no existe un menú, y solo se puede jugar una partida.
- */
-int main() {
+int submenu_tiempo() {
+    int opcion = 0;
+
+    while (opcion < 1 || opcion > 4) {
+        puts("\n⏱︎ FORMATO DE TIEMPO ⏱︎");
+        puts("1. Blitz (3 min)");
+        puts("2. Rápido (10 min)");
+        puts("3. Sin tiempo");
+        puts("4. Volver al menú principal");
+        puts("Elija una opción: ");
+
+        scanf("%d", &opcion);
+        
+        if (opcion < 1 || opcion > 4) {
+            puts("\nOpcion no válida. Por favor, vuelva a intentarlo...");
+            puts("Presione ENTER para volver al submenú...");
+            getchar();
+            getchar();
+        }
+    }
+    
+    if (opcion == 4) {
+        return -1; // Volver al menú principal
+    }
+    return opcion;
+}
+
+int submenu_piezas() {
+    int opcion = 0;
+
+    while (opcion < 1 || opcion > 4) {
+        puts("\n𖣯 SELECCIÓN DE PIEZAS 𖣯");
+        puts("1. Blancas");
+        puts("2. Negras");
+        puts("3. Aleatorio");
+        puts("4. Volver al menú principal");
+        puts("Elija una opción: ");
+
+        scanf("%d", &opcion);   
+
+        if (opcion < 1 || opcion > 4) {
+            puts("\nOpcion no válida. Por favor, vuelva a intentarlo...");
+            puts("Presione ENTER para volver al submenú...");
+            getchar();
+            getchar();
+        }
+    }
+    
+    if (opcion == 4) {
+        return -1; // Volver al menú principal
+    }
+    return opcion;
+}
+
+void iniciar_partida(int j1, int formato, int es_bot) {
+    puts("\n♚ INICIANDO PARTIDA ♛");
+    // TODO: IMPLEMENTAR ASIGNACIÓN ALEATORIA
+    printf("Jugador 1: %s\n", j1 == 1 ? "Blancas" : j1 == 2 ? "Negras" : "Aleatorio");
+    printf("Formato: %s\n", formato == 1 ? "Blitz" : formato == 2 ? "Rápido" : "Sin tiempo");
+    printf("Modo: %s\n", es_bot ? "vs CPU" : "vs Jugador");
+    puts("¡Que comience el juego! :)\n");
+
     gamestate_t game;
     move_t move;
-    char input[10];
+    char input[16];
 
-    // Realizar benchmark PERFT
-    init_board(&game);
-    perft_benchmark(&game, 6);
-
-    // Test funcionamiento minimax (Grafo implícito)
-    //init_board(&game);
-    //move_t best_move = find_best_move(&game, 6);
-    
-    // Test funcionamiento de TDA tabla hash + Zobrist hashing
-    zobrist_init();
-    hashtable_t *book = hashtable_create();
-    if (!book) {
-        printf("[ HASHTABLE ] No se pudo crear un libro de aperturas como tabla hash\n");
-        return 1;
-    }
-
-    // Obtener clave Zobrist para posición inicial
-    uint64_t key_initial = zobrist_hash(&game);
-    printf("[ ZOBRIST ] Clave posición inicial: %llu\n", key_initial);
-
-    // Simulamos e2e4 y obtenemos la nueva clave
-    make_dummy_e2e4(&game);
-    uint64_t key_after_e4 = zobrist_hash(&game);
-    printf("[ ZOBRIST ] Clave después de e2e4: %llu\n", key_after_e4);
-
-    // Agregamos movimientos recomendados para las dos posiciones
-    hashtable_add_move(book, key_initial, "e2e4", 10);
-    hashtable_add_move(book, key_initial, "d2d4", 8);
-    hashtable_add_move(book, key_after_e4, "e7e5", 10);
-    hashtable_add_move(book, key_after_e4, "c7c5", 9);
-
-    char recommended_move[MAX_MOVE_STR];
-    if (hashtable_lookup_best_move(book, key_initial, recommended_move))
-        printf("[ HASHTABLE ] Movimiento recomendado para posición inicial: %s\n", recommended_move);
-    else
-        printf("[ HASHTABLE ] No se encontró un movimiento para la posición inicial.\n");
-
-    if (hashtable_lookup_best_move(book, key_after_e4, recommended_move))
-        printf("[ HASHTABLE ] Movimiento recomendado después de e2e4: %s\n", recommended_move);
-    else
-        printf("[ HASHTABLE ] No se encontró un movimiento para la posición después de 1. e2e4.\n");
-
-    hashtable_destroy(book);
-    
     // Finalizados los tests, se inicializa el tablero nuevamente:
     init_board(&game);
 
     // Menú principal
-    printf("\n¡Bienvenido a Fortuna Chess!\n");
-    printf("Esta es una versión experimental, por lo que gran parte de las funcionalidades no están disponibles.\n");
+
+    // Se muestra el tablero en pantalla
+    display_board(&game, j1);
+
     printf("Ingrese movimientos en formato: e2e4\n");
     printf("Escriba 'ayuda' para ver todos los comandos disponibles\n");
     printf("Escriba 'salir' para salir\n\n");
-    
-    // Se muestra el tablero en pantalla
-    display_board(&game);
     
     while (1) {
         // Evaluar estado del juego, para saber si el bucle principal debe terminar
@@ -302,7 +317,7 @@ int main() {
                 printf("No hay movimiento que deshacer. (Posición inicial)\n");
             } else {
                 unmake_move(&game);
-                display_board(&game);
+                display_board(&game, j1);
                 printf("Movimiento deshecho.\n");
             }
             continue;
@@ -311,7 +326,7 @@ int main() {
         if (parse_move(input, &move, &game)) {
             if (is_legal_move(&move, &game)) {
                 make_move(&move, &game, true);
-                display_board(&game);
+                display_board(&game, j1);
                 // TODO: Agregar checks para jaque mate, aguas, etc. y terminar la partida con su correspondiente mensaje
                 if (is_in_check(&game, game.to_move)) {
                     printf("¡Jaque!\n");
@@ -326,5 +341,123 @@ int main() {
     }
     
     printf("¡Gracias por jugar!\n");
+}
+
+void submenu_partida(int es_bot) {
+    int formato = 0;
+    int j1 = 0;
+    
+    // Elección de formato
+    formato = submenu_tiempo();
+    if (formato == -1) 
+        return; // Volver al menú principal
+    
+    // Elección de pieza
+    j1 = submenu_piezas();
+    if (j1 == -1) 
+        return; // Volver al menú principal
+    
+    // Empezar el juego
+    iniciar_partida(j1, formato, es_bot);
+    exit(EXIT_SUCCESS);
+}
+
+void menu_principal() {
+    int opcion;
+    
+    do {
+        puts("◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎");
+        puts("◻︎        ♜   𝓕𝓞𝓡𝓣𝓤𝓝𝓐   𝓒𝓗𝓔𝓢𝓢   ♜        ◻︎");
+        puts("◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎◻︎◼︎");
+        puts("Bienvenido/a, elija una opción:");
+
+        puts("1. Jugador vs Jugador (PvP) ⚔︎");
+        puts("2. Jugador vs CPU (PvE) ⌨︎");
+        puts("3. Salir :(");
+
+        scanf("%d", &opcion);
+        
+        switch(opcion) {
+            case 1:
+                submenu_partida(0); // es_bot = 0 para PvP
+                break;
+            case 2:
+                submenu_partida(1); // es_bot = 1 para PvE
+                break;
+            case 3:
+                puts("\nSaliendo de Fortuna Chess. Muchas gracias por jugar, vuelva pronto ♞");
+                break;
+            default:
+                puts("\nOpcion no válida. Por favor, vuelva a intentarlo:");
+                puts("Presione ENTER para volver al menú...");
+                getchar();
+                getchar();
+        }
+    } while (opcion != 3);
+}
+
+/**
+ * Bucle principal del juego.
+ * Se encarga de recibir los movimientos del usuario y de mostrar el tablero.
+ * Por el momento, no existe un menú, y solo se puede jugar una partida.
+ */
+int main() {
+    // Establece la página de códigos de salida usada por la consola
+    // Necesitamos hacer esto para que los caracteres especiales de se rendericen bien
+    #ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    #endif
+
+    gamestate_t game;
+    move_t move;
+    char input[10];
+
+    // Realizar benchmark PERFT
+    init_board(&game);
+    perft_benchmark(&game, 5);
+
+    // Test funcionamiento minimax (Grafo implícito)
+    //init_board(&game);
+    //move_t best_move = find_best_move(&game, 6);
+    
+    // Test funcionamiento de TDA tabla hash + Zobrist hashing
+    zobrist_init();
+    hashtable_t *book = hashtable_create();
+    if (!book) {
+        printf("[ HASHTABLE ] No se pudo crear un libro de aperturas como tabla hash\n");
+        return 1;
+    }
+
+    // Obtener clave Zobrist para posición inicial
+    uint64_t key_initial = zobrist_hash(&game);
+    printf("[ ZOBRIST ] Clave posición inicial: %llu\n", key_initial);
+
+    // Simulamos e2e4 y obtenemos la nueva clave
+    make_dummy_e2e4(&game);
+    uint64_t key_after_e4 = zobrist_hash(&game);
+    printf("[ ZOBRIST ] Clave después de e2e4: %llu\n", key_after_e4);
+
+    // Agregamos movimientos recomendados para las dos posiciones
+    hashtable_add_move(book, key_initial, "e2e4", 10);
+    hashtable_add_move(book, key_initial, "d2d4", 8);
+    hashtable_add_move(book, key_after_e4, "e7e5", 10);
+    hashtable_add_move(book, key_after_e4, "c7c5", 9);
+
+    char recommended_move[MAX_MOVE_STR];
+    if (hashtable_lookup_best_move(book, key_initial, recommended_move))
+        printf("[ HASHTABLE ] Movimiento recomendado para posición inicial: %s\n", recommended_move);
+    else
+        printf("[ HASHTABLE ] No se encontró un movimiento para la posición inicial.\n");
+
+    if (hashtable_lookup_best_move(book, key_after_e4, recommended_move))
+        printf("[ HASHTABLE ] Movimiento recomendado después de e2e4: %s\n", recommended_move);
+    else
+        printf("[ HASHTABLE ] No se encontró un movimiento para la posición después de 1. e2e4.\n");
+
+    hashtable_destroy(book);
+
+    // Menú principal
+    menu_principal();
+    
     return 0;
 }
