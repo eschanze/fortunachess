@@ -71,7 +71,7 @@ int char_to_piece(char c) {
  * Convierte notación algebraica a índice 0x88.
  * Ej: "e4" => SQUARE(3, 4)
  * @param algebraic: string con notación algebraica.
- * @return índice del tablero en format 0x88.
+ * @return índice del tablero en formato 0x88.
  */
 int algebraic_to_square(const char *algebraic) {
     if (strlen(algebraic) != 2) return -1;
@@ -87,7 +87,7 @@ int algebraic_to_square(const char *algebraic) {
 /**
  * Convierte un índice 0x88 a notación algebraica.
  * Ej: SQUARE(3, 4) => "e4"
- * @param square: índice del tablero en format 0x88.
+ * @param square: índice del tablero en formato 0x88.
  * @param algebraic: buffer donde se guarda la notación.
  */
 void square_to_algebraic(int square, char *algebraic) {
@@ -183,7 +183,7 @@ bool parse_move(const char *move_str, move_t *move, gamestate_t *game) {
             (COLOR(move->piece) == BLACK && dest_rank == 0)) {
             move->flags = MOVE_PROMOTION;
             // Promoción por defecto a reina
-            // TODO: Agregar las otras optiones de promoción (el usuario debe poder elegir)
+            // TODO: Agregar las otras opciones de promoción (el usuario debe poder elegir)
             move->promotion = QUEEN;
         }
     }
@@ -261,7 +261,7 @@ int time_submenu() {
     int option = 0;
 
     while (option < 1 || option > 4) {
-        puts("\n⏱︎ format DE TIEMPO ⏱︎");
+        puts("\n⏱︎ FORMATO DE TIEMPO ⏱︎");
         puts("1. Blitz (3 min)");
         puts("2. Rápido (10 min)");
         puts("3. Sin tiempo");
@@ -326,7 +326,7 @@ void start_game(int p1, int format, int is_bot) {
     puts("\n♚ INICIANDO PARTIDA ♛");
     // TODO: IMPLEMENTAR ASIGNACIÓN ALEATORIA
     printf("Jugador 1: %s\n", p1 == 1 ? "Blancas" : p1 == 2 ? "Negras" : "Aleatorio");
-    printf("format: %s\n", format == 1 ? "Blitz" : format == 2 ? "Rápido" : "Sin tiempo");
+    printf("Formato: %s\n", format == 1 ? "Blitz" : format == 2 ? "Rápido" : "Sin tiempo");
     printf("Modo: %s\n", is_bot ? "vs CPU" : "vs Jugador");
     puts("¡Que comience el juego! :)\n");
 
@@ -342,7 +342,7 @@ void start_game(int p1, int format, int is_bot) {
     // Se muestra el tablero en pantalla
     display_board(&game, p1);
 
-    printf("Ingrese movimientos en format: e2e4\n");
+    printf("Ingrese movimientos en formato: e2e4\n");
     printf("Escriba 'ayuda' para ver todos los comandos disponibles\n");
     printf("Escriba 'salir' para salir\n\n");
     int ch;
@@ -407,7 +407,7 @@ void start_game(int p1, int format, int is_bot) {
                 printf("¡Movimiento ilegal!\n");
             }
         } else {
-            printf("format de movimiento inválido. Use el format [origen][destino]. Ejemplo: e2e4\n");
+            printf("Formato de movimiento inválido. Use el formato [origen][destino]. Ejemplo: e2e4\n");
             printf("O escriba 'ayuda' para ver todos los comandos disponibles.\n");
         }
     }
