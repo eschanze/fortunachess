@@ -104,6 +104,7 @@ void square_to_algebraic(int square, char *algebraic) {
 /**
  * Muestra el estado actual del tablero en la terminal.
  * @param game: puntero al estado del juego actual.
+ * @param p1: 1 sí el jugador 1 controla las piezas blancas, 2 en caso contrario.
  */
 void display_board(gamestate_t *game, int p1) {
     printf("\n    a b c d e f g h\n");
@@ -337,8 +338,6 @@ void start_game(int p1, int format, int is_bot) {
     // Finalizados los tests, se inicializa el tablero nuevamente:
     init_board(&game);
 
-    // Menú principal
-
     // Se muestra el tablero en pantalla
     display_board(&game, p1);
 
@@ -357,6 +356,10 @@ void start_game(int p1, int format, int is_bot) {
             printf("%s\n", get_game_result_name(result));
             break;
         }
+
+        //move_t best_move = find_best_move(&game, 6);
+        //make_move(&best_move, &game, false);
+        //display_board(&game, p1);
 
         printf("Ingrese movimiento o comando: ");
         if (fgets(input, sizeof(input), stdin) == NULL) break;
@@ -445,8 +448,9 @@ int main() {
     move_t move;
 
     // Realizar benchmark PERFT
-    init_board(&game);
-    perft_benchmark(&game, 5);
+    const char *fen = "rnbq1bnr/pppp1ppp/5k2/4p3/4P3/5K2/PPPP1PPP/RNBQ1BNR w - - 6 5";
+    init_board_fen(&game, fen);
+    perft_benchmark(&game, 6);
 
     // Test funcionamiento minimax (Grafo implícito)
     //init_board(&game);

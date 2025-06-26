@@ -128,6 +128,7 @@ typedef enum {
 
 // Inicialización
 void init_board(gamestate_t *game);
+int init_board_fen(gamestate_t *game, const char *fen);
 // Lógica del juego (legalidad, generación de movimientos, etc.)
 bool is_slide_valid(move_t *move, gamestate_t *game, int dir);
 bool is_square_attacked(gamestate_t *game, int square, int by_color);

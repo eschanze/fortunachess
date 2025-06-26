@@ -69,6 +69,158 @@ void init_board(gamestate_t *game) {
     game->move_count = 0;
 }
 
+// Función auxiliar para convertir carácter de pieza FEN a valor interno
+int fen_char_to_piece(char c) {
+    int piece_type;
+    int color;
+    
+    // Determinar color (minúscula = negro, mayúscula = blanco)
+    color = islower(c) ? BLACK : WHITE;
+    c = tolower(c);
+    
+    // Convertir carácter a tipo de pieza
+    switch (c) {
+        case 'p': piece_type = PAWN; break;
+        case 'n': piece_type = KNIGHT; break;
+        case 'b': piece_type = BISHOP; break;
+        case 'r': piece_type = ROOK; break;
+        case 'q': piece_type = QUEEN; break;
+        case 'k': piece_type = KING; break;
+        default: return EMPTY;
+    }
+    
+    return MAKE_PIECE(piece_type, color);
+}
+
+// Función auxiliar para convertir notación de casilla (ej: "e4") a índice 0x88
+int square_from_string(const char *str) {
+    if (str == NULL || strlen(str) < 2) return -1;
+    
+    int file = str[0] - 'a';  // a=0, b=1, ..., h=7
+    int rank = str[1] - '1';  // 1=0, 2=1, ..., 8=7
+    
+    if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
+    
+    return SQUARE(rank, file);
+}
+
+/**
+ * Inicializa el tablero con una posición dada por un string en formato FEN.
+ * @param game: puntero al estado del juego actual.
+ * @param fen: string FEN válido.
+ */
+int init_board_fen(gamestate_t *game, const char *fen) {
+    if (game == NULL || fen == NULL) return -1;
+    
+    // Inicializar tablero vacío
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        game->board[i] = EMPTY;
+    }
+    
+    // Crear copia del FEN para tokenizar
+    char *fen_copy = strdup(fen);
+    if (fen_copy == NULL) return -1;
+    
+    char *token;
+    char *saveptr;
+    int field = 0;
+    
+    // Dividir FEN en campos separados por espacios
+    token = strtok_r(fen_copy, " ", &saveptr);
+    
+    while (token != NULL && field < 6) {
+        switch (field) {
+            case 0: {  // Posición de las piezas
+                int rank = 7;  // FEN empieza desde la fila 8 (índice 7)
+                int file = 0;
+                
+                for (int i = 0; token[i] != '\0'; i++) {
+                    char c = token[i];
+                    
+                    if (c == '/') {
+                        // Nueva fila
+                        rank--;
+                        file = 0;
+                        if (rank < 0) break;
+                    } else if (isdigit(c)) {
+                        // Número de casillas vacías
+                        int empty_squares = c - '0';
+                        file += empty_squares;
+                    } else {
+                        // Pieza
+                        if (rank >= 0 && rank <= 7 && file >= 0 && file <= 7) {
+                            int square = SQUARE(rank, file);
+                            int piece = fen_char_to_piece(c);
+                            game->board[square] = piece;
+                            
+                            // Guardar posición de los reyes
+                            if (PIECE_TYPE(piece) == KING) {
+                                game->king_square[COLOR(piece)] = square;
+                            }
+                        }
+                        file++;
+                    }
+                }
+                break;
+            }
+            
+            case 1: {  // Turno activo
+                game->to_move = (token[0] == 'w') ? WHITE : BLACK;
+                break;
+            }
+            
+            case 2: {  // Derechos de enroque
+                game->castling_rights = 0;
+                if (token[0] != '-') {
+                    for (int i = 0; token[i] != '\0'; i++) {
+                        switch (token[i]) {
+                            case 'K': game->castling_rights |= CASTLE_WHITE_KING; break;
+                            case 'Q': game->castling_rights |= CASTLE_WHITE_QUEEN; break;
+                            case 'k': game->castling_rights |= CASTLE_BLACK_KING; break;
+                            case 'q': game->castling_rights |= CASTLE_BLACK_QUEEN; break;
+                        }
+                    }
+                }
+                break;
+            }
+            
+            case 3: {  // Casilla en passant
+                if (token[0] == '-') {
+                    game->en_passant_square = -1;
+                } else {
+                    game->en_passant_square = square_from_string(token);
+                }
+                break;
+            }
+            
+            case 4: {  // Contador de medios movimientos
+                game->halfmove_clock = atoi(token);
+                break;
+            }
+            
+            case 5: {  // Número de jugada completa
+                game->fullmove_number = atoi(token);
+                break;
+            }
+        }
+        
+        token = strtok_r(NULL, " ", &saveptr);
+        field++;
+    }
+    
+    // Inicializar otros campos si no están en el FEN
+    if (field < 6) {
+        if (field <= 4) game->halfmove_clock = 0;
+        if (field <= 5) game->fullmove_number = 1;
+    }
+    
+    // Inicializar contador de movimientos
+    game->move_count = 0;
+    
+    free(fen_copy);
+    return 0;  // Éxito
+}
+
 /**
  * Valida el movimiento de una pieza deslizante (torres, alfiles, y reina) en una dirección dada.
  * Verifica si una pieza puede deslizarse desde 'from' a 'to' en la dirección especificada
