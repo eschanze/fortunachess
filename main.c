@@ -447,10 +447,16 @@ int main() {
     gamestate_t game;
     move_t move;
 
-    // Realizar benchmark PERFT
-    const char *fen = "rnbq1bnr/pppp1ppp/5k2/4p3/4P3/5K2/PPPP1PPP/RNBQ1BNR w - - 6 5";
+    // Realizar benchmark PERFT en una posición complicada
+    // Debería dar:
+    // Profunidad 1: 48 nodos
+    // Profunidad 2: 2039 nodos
+    // Profunidad 3: 97862 nodos
+    // Profunidad 4: 4085603 nodos
+    // Profunidad 5: 193690690 nodos
+    const char *fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
     init_board_fen(&game, fen);
-    perft_benchmark(&game, 6);
+    perft_benchmark(&game, 4);
 
     // Test funcionamiento minimax (Grafo implícito)
     //init_board(&game);

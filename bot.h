@@ -3,6 +3,7 @@
 #include <limits.h>
 #include "chess.h"
 
+void filter_legal_moves(gamestate_t *game, move_list_t *moves);
 int evaluate_position(gamestate_t *game);
 int is_game_over(gamestate_t *game);
 int score_move(gamestate_t *game, move_t *move);

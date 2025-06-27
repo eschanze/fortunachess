@@ -11,6 +11,17 @@ static const int piece_values[7] = {
     20000 // KING
 };
 
+// Función auxiliar que filtra los movimientos pseudo-legales de generate_moves(...)
+void filter_legal_moves(gamestate_t *game, move_list_t *moves) {
+    int write_idx = 0;
+    for (int i = 0; i < moves->count; i++) {
+        if (is_legal_move(&moves->moves[i], game)) {
+            moves->moves[write_idx++] = moves->moves[i];
+        }
+    }
+    moves->count = write_idx;
+}
+
 // Función de evaluación simple: material + movilidad
 int evaluate_position(gamestate_t *game) {
     int score = 0;
@@ -41,11 +52,13 @@ int evaluate_position(gamestate_t *game) {
     int original_turn = game->to_move;
     game->to_move = WHITE;
     generate_moves(game, &moves);
+    filter_legal_moves(game, &moves);
     white_mobility = moves.count;
     
     // Contar movimientos para las negras
     game->to_move = BLACK;
     generate_moves(game, &moves);
+    filter_legal_moves(game, &moves);
     black_mobility = moves.count;
     
     // Restaurar turno original
@@ -112,6 +125,7 @@ int alpha_beta(gamestate_t *game, int depth, int alpha, int beta, int maximizing
     
     move_list_t moves;
     generate_moves(game, &moves);
+    filter_legal_moves(game, &moves);
     
     // Ordenar movimientos para mejorar la poda
     sort_moves(game, &moves);
@@ -175,6 +189,7 @@ int alpha_beta(gamestate_t *game, int depth, int alpha, int beta, int maximizing
 move_t find_best_move(gamestate_t *game, int depth) {
     move_list_t moves;
     generate_moves(game, &moves);
+    filter_legal_moves(game, &moves);
     
     if (moves.count == 0) {
         // No hay movimientos legales

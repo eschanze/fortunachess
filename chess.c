@@ -69,6 +69,32 @@ void init_board(gamestate_t *game) {
     game->move_count = 0;
 }
 
+// Se tuvo que implementar para evitar problemas de compilación cuando se usan algunas versiones de MINGW64-gcc en Windows
+static char *strtok_c(char *str, const char *delim, char **saveptr) {
+    char *token;
+    
+    if (str == NULL)
+        str = *saveptr;
+    
+    str += strspn(str, delim);
+    
+    if (*str == '\0') {
+        *saveptr = str;
+        return NULL;
+    }
+    
+    token = str;
+    str = strpbrk(token, delim);
+    if (str == NULL) {
+        *saveptr = token + strlen(token);
+    } else {
+        *str = '\0';
+        *saveptr = str + 1;
+    }
+    
+    return token;
+}
+
 // Función auxiliar para convertir carácter de pieza FEN a valor interno
 int fen_char_to_piece(char c) {
     int piece_type;
@@ -126,7 +152,7 @@ int init_board_fen(gamestate_t *game, const char *fen) {
     int field = 0;
     
     // Dividir FEN en campos separados por espacios
-    token = strtok_r(fen_copy, " ", &saveptr);
+    token = strtok_c(fen_copy, " ", &saveptr);
     
     while (token != NULL && field < 6) {
         switch (field) {
