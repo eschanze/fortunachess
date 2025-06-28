@@ -343,6 +343,12 @@ int piece_submenu() {
  * @param is_bot: 1 si se juega contra la CPU, 0 si es PvP.
  */
 void start_game(int p1, int format, int is_bot) {
+    // Si el usuario eligio aleatorio, asignamos las piezas de forma aleatoria
+    if (p1 == 3) {
+        srand((unsigned int)time(NULL));
+        p1 = (rand() % 2) + 1; // 1 o 2 aleatoriamente
+    }
+    
     puts("\n♚ INICIANDO PARTIDA ♛");
     // TODO: IMPLEMENTAR ASIGNACIÓN ALEATORIA
     printf("Jugador 1: %s\n", p1 == 1 ? "Blancas" : p1 == 2 ? "Negras" : "Aleatorio");
