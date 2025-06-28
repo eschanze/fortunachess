@@ -240,7 +240,7 @@ void main_menu() {
                 puts("\nSaliendo de Fortuna Chess. Muchas gracias por jugar, vuelva pronto ♞");
                 break;
             default:
-                puts("\noption no válida. Por favor, vuelva a intentarlo:");
+                puts("\nOpción no válida. Por favor, vuelva a intentarlo:");
                 puts("Presione ENTER para volver al menú...");
                 getchar();
                 getchar();
@@ -291,7 +291,7 @@ int time_submenu() {
         scanf("%d", &option);
         
         if (option < 1 || option > 4) {
-            puts("\noption no válida. Por favor, vuelva a intentarlo...");
+            puts("\nOpción no válida. Por favor, vuelva a intentarlo...");
             puts("Presione ENTER para volver al submenú...");
             getchar();
             getchar();
@@ -323,7 +323,7 @@ int piece_submenu() {
         scanf("%d", &option);   
 
         if (option < 1 || option > 4) {
-            puts("\noption no válida. Por favor, vuelva a intentarlo...");
+            puts("\nOpción no válida. Por favor, vuelva a intentarlo...");
             puts("Presione ENTER para volver al submenú...");
             getchar();
             getchar();
