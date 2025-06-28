@@ -230,7 +230,7 @@ int init_board_fen(gamestate_t *game, const char *fen) {
             }
         }
         
-        token = strtok_r(NULL, " ", &saveptr);
+        token = strtok_c(NULL, " ", &saveptr);
         field++;
     }
     
@@ -247,6 +247,121 @@ int init_board_fen(gamestate_t *game, const char *fen) {
     return 0;  // Éxito
 }
 
+// Función auxiliar para convertir de un número (que representa a una pieza) a caracter FEN
+char piece_to_fen_char(int piece) {
+    if (piece == EMPTY) return '\0';
+    
+    int type = PIECE_TYPE(piece);
+    int color = COLOR(piece);
+    
+    char piece_chars[] = {'\0', 'p', 'n', 'b', 'r', 'q', 'k'};
+    char fen_char = piece_chars[type];
+    
+    if (color == WHITE) {
+        fen_char = fen_char - 'a' + 'A';
+    }
+    
+    return fen_char;
+}
+
+
+// Funcion auxiliar que convierte un índice 0x88 a notación algebraica.
+// Ej: SQUARE(3, 4) => "e4"
+void square_to_algebraic(int square, char *algebraic) {
+    if (!IS_VALID_SQUARE(square)) {
+        strcpy(algebraic, "??");
+        return;
+    }
+    
+    algebraic[0] = 'a' + FILE(square);
+    algebraic[1] = '1' + RANK(square);
+    algebraic[2] = '\0';
+}
+
+/**
+ * Convierte un estado de juego en una cadena FEN (Forsyth-Edwards Notation).
+ * @param gs Puntero al estado actual del juego
+ * @param fen_string Puntero a un arreglo de caracteres donde se almacenará la cadena FEN generada.
+ */
+void gamestate_to_fen(gamestate_t *gs, char *fen_string) {
+    char temp[512];
+    int pos = 0;
+    
+    for (int rank = 7; rank >= 0; rank--) {
+        int empty_count = 0;
+        
+        for (int file = 0; file < 8; file++) {
+            int square = SQUARE(rank, file);
+            int piece = gs->board[square];
+            
+            if (piece == EMPTY) {
+                empty_count++;
+            } else {
+                if (empty_count > 0) {
+                    fen_string[pos++] = '0' + empty_count;
+                    empty_count = 0;
+                }
+                fen_string[pos++] = piece_to_fen_char(piece);
+            }
+        }
+        
+        if (empty_count > 0) {
+            fen_string[pos++] = '0' + empty_count;
+        }
+        
+        if (rank > 0) {
+            fen_string[pos++] = '/';
+        }
+    }
+    
+    fen_string[pos++] = ' ';
+    fen_string[pos++] = (gs->to_move == WHITE) ? 'w' : 'b';
+    
+    // Enroque
+    fen_string[pos++] = ' ';
+    int castling_start = pos;
+    
+    if (gs->castling_rights & CASTLE_WHITE_KING) {
+        fen_string[pos++] = 'K';
+    }
+    if (gs->castling_rights & CASTLE_WHITE_QUEEN) {
+        fen_string[pos++] = 'Q';
+    }
+    if (gs->castling_rights & CASTLE_BLACK_KING) {
+        fen_string[pos++] = 'k';
+    }
+    if (gs->castling_rights & CASTLE_BLACK_QUEEN) {
+        fen_string[pos++] = 'q';
+    }
+    
+    if (pos == castling_start) {
+        fen_string[pos++] = '-';
+    }
+    
+    // En passant
+    fen_string[pos++] = ' ';
+    char ep_notation[4];
+    if (gs->en_passant_square == -1) {
+        strcpy(ep_notation, "-");
+    } else {
+        square_to_algebraic(gs->en_passant_square, ep_notation);
+    }
+    strcpy(&fen_string[pos], ep_notation);
+    pos += strlen(ep_notation);
+    
+    fen_string[pos++] = ' ';
+    sprintf(temp, "%d", gs->halfmove_clock);
+    strcpy(&fen_string[pos], temp);
+    pos += strlen(temp);
+
+    fen_string[pos++] = ' ';
+    sprintf(temp, "%d", gs->fullmove_number);
+    strcpy(&fen_string[pos], temp);
+    pos += strlen(temp);
+    
+    fen_string[pos] = '\0';
+}
+
 /**
  * Valida el movimiento de una pieza deslizante (torres, alfiles, y reina) en una dirección dada.
  * Verifica si una pieza puede deslizarse desde 'from' a 'to' en la dirección especificada
@@ -260,7 +375,7 @@ int init_board_fen(gamestate_t *game, const char *fen) {
 bool is_slide_valid(move_t *move, gamestate_t *game, int dir) {
     int from = move->from;
     int to = move->to;
-    int *board = game->board;
+    int *board = game->board;   
 
     // Recorrer la dirección dada desde la casilla origen
     for (int sq = from + dir; IS_VALID_SQUARE(sq); sq += dir) {

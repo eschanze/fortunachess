@@ -114,3 +114,87 @@ int hashtable_get_size(hashtable_t *ht) {
 bool hashtable_resize(hashtable_t *ht, int new_capacity) {
     return false;
 }
+
+static int read_entry(FILE *f, polyglot_entry_t *entry) {
+    uint64_t r = 0;
+    int c;
+
+    #define READ_BYTES(n) do { \
+        r = 0; \
+        for (int i = 0; i < (n); i++) { \
+            c = fgetc(f); \
+            if (c == EOF) return 0; \
+            r = (r << 8) | (uint8_t)c; \
+        } \
+    } while (0)
+
+    READ_BYTES(8); entry->key = r;
+    READ_BYTES(2); entry->move = (uint16_t)r;
+    READ_BYTES(2); entry->weight = (uint16_t)r;
+    READ_BYTES(4); entry->learn = (uint32_t)r;
+    return 1;
+
+    #undef READ_BYTES
+}
+
+static void polyglot_move_to_string(char str[6], uint16_t move) {
+    const char *promote_pieces = " nbrq";
+
+    int from = (move >> 6) & 0x3F;
+    int to   = move & 0x3F;
+    int prom = (move >> 12) & 0x7;
+
+    int from_file = from & 7, from_rank = from >> 3;
+    int to_file   = to & 7, to_rank   = to >> 3;
+
+    str[0] = 'a' + from_file;
+    str[1] = '1' + from_rank;
+    str[2] = 'a' + to_file;
+    str[3] = '1' + to_rank;
+    if (prom) {
+        str[4] = promote_pieces[prom];
+        str[5] = '\0';
+    } else {
+        str[4] = '\0';
+    }
+
+    // Enroque
+    if (strcmp(str, "e1h1") == 0) strcpy(str, "e1g1");
+    else if (strcmp(str, "e1a1") == 0) strcpy(str, "e1c1");
+    else if (strcmp(str, "e8h8") == 0) strcpy(str, "e8g8");
+    else if (strcmp(str, "e8a8") == 0) strcpy(str, "e8c8");
+}
+
+int load_polyglot_book(const char *filename, hashtable_t *table) {
+    FILE *f = fopen(filename, "rb");
+    if (!f) {
+        perror("[ HASHTABLE ] Error al abrir el archivo");
+        return 0;
+    }
+
+    polyglot_entry_t entry;
+    while (read_entry(f, &entry)) {
+        char move_str[6];
+        polyglot_move_to_string(move_str, entry.move);
+        hashtable_add_move(table, entry.key, move_str, entry.weight);
+    }
+
+    fclose(f);
+    return 1;
+}
+
+void print_moves_for_key(hashtable_t *table, uint64_t key) {
+    char moves[MAX_MOVES_PER_POSITION][MAX_MOVE_STR];
+    int priorities[MAX_MOVES_PER_POSITION];
+    int count = hashtable_get_moves(table, key, moves, priorities, MAX_MOVES_PER_POSITION);
+
+    if (count == 0) {
+        printf("[ HASHTABLE ] No se encontraron movimientso para la llave %016llx\n", (unsigned long long)key);
+        return;
+    }
+
+    printf("[ HASHTABLE ] Se encontraron %d movimientos para la llave %016llx:\n", count, (unsigned long long)key);
+    for (int i = 0; i < count; i++) {
+        printf("  Movimiento = %s (prioridad = %d)\n", moves[i], priorities[i]);
+    }
+}

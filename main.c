@@ -34,6 +34,9 @@ int time_submenu();
 int piece_submenu();
 void start_game(int player_piece, int time_format, int is_bot);
 
+// Tabla hash que se utilizará como libro de apertura para el modo Jugador vs CPU
+hashtable_t *book = NULL;
+
 /**
  * Convierte un tipo de pieza a su carácter representativo.
  * Ej: MAKE_PIECE(PAWN, WHITE) => 'P'
@@ -85,23 +88,6 @@ int algebraic_to_square(const char *algebraic) {
 }
 
 /**
- * Convierte un índice 0x88 a notación algebraica.
- * Ej: SQUARE(3, 4) => "e4"
- * @param square: índice del tablero en formato 0x88.
- * @param algebraic: buffer donde se guarda la notación.
- */
-void square_to_algebraic(int square, char *algebraic) {
-    if (!IS_VALID_SQUARE(square)) {
-        strcpy(algebraic, "??");
-        return;
-    }
-    
-    algebraic[0] = 'a' + FILE(square);
-    algebraic[1] = '1' + RANK(square);
-    algebraic[2] = '\0';
-}
-
-/**
  * Muestra el estado actual del tablero en la terminal.
  * @param game: puntero al estado del juego actual.
  * @param p1: 1 sí el jugador 1 controla las piezas blancas, 2 en caso contrario.
@@ -134,7 +120,9 @@ void display_board(gamestate_t *game, int p1) {
            (game->castling_rights & CASTLE_BLACK_KING) ? "k" : "",
            (game->castling_rights & CASTLE_BLACK_QUEEN) ? "q" : "");
 
-    printf("[ DEBUG ] Hash de la posición: %llu\n", zobrist_hash(game));
+    char fen[128];
+    gamestate_to_fen(game, fen);
+    printf("[ DEBUG ] Hash de la posición: %016llx\n", polyglot_hash(fen));
 
     // [DEBUG] Imprimir la casilla "fantasma" que deja un peón que avanza 2 casillas
     // Útil para poder testear que las reglas de en passant estén funcionando correctamente
@@ -177,18 +165,49 @@ bool parse_move(const char *move_str, move_t *move, gamestate_t *game) {
     if (move->captured != EMPTY)
         move->flags = MOVE_CAPTURE;
     
+    //Verificar si es enroque (ej: "e1g1" o "e8c8")
+    if (PIECE_TYPE(move->piece) == KING) {
+        int diff = move->to - move->from;
+        if ((COLOR(move->piece) == WHITE && move->from == SQUARE(0,4)) ||
+            (COLOR(move->piece) == BLACK && move->from == SQUARE(7,4))) {
+            if (diff == 2) {
+                move->flags = MOVE_CASTLE_KING; // Enroque corto
+            } else if (diff == -2) {
+                move->flags = MOVE_CASTLE_QUEEN; // Enroque largo
+            }
+        }
+    }
+
     // Verificar si es una promoción (peón llega a la última fila)
     if (PIECE_TYPE(move->piece) == PAWN) {
         int dest_rank = RANK(move->to);
         if ((COLOR(move->piece) == WHITE && dest_rank == 7) ||
             (COLOR(move->piece) == BLACK && dest_rank == 0)) {
             move->flags = MOVE_PROMOTION;
-            // Promoción por defecto a reina
-            // TODO: Agregar las otras opciones de promoción (el usuario debe poder elegir)
-            move->promotion = QUEEN;
+            // Si hay un quinto carácter, entonces es una promoción (ej: "e7e8r")
+            if (strlen(move_str) >= 5) {
+                switch (tolower(move_str[4])) {
+                    case 'q': move->promotion = QUEEN; break;
+                    case 'r': move->promotion = ROOK; break;
+                    case 'b': move->promotion = BISHOP; break;
+                    case 'n': move->promotion = KNIGHT; break;
+                    default: move->promotion = QUEEN; break; // Por defecto, promoción a reina
+                }
+            } else {
+                move->promotion = QUEEN; // Por defecto, promoción a reina
+            }
         }
     }
-    // TODO: Agregar detección de mensajes para enroque y en passant (captura al paso)
+
+    // Verificar si es una captura al paso (en passant)
+    if (PIECE_TYPE(move->piece) == PAWN) {
+        if (move->to == game->en_passant_square &&
+            move->from % 16 != move->to % 16 && // Asegurarse de que no se mueve en la misma columna
+            game->board[move->to] == EMPTY) { // Verifica que la casilla de destino esté vacía
+                move->flags = MOVE_EN_PASSANT;
+                move->captured = MAKE_PIECE(PAWN, game->to_move == WHITE ? BLACK : WHITE);
+            }
+    }
     return true;
 }
 
@@ -338,6 +357,16 @@ void start_game(int p1, int format, int is_bot) {
     // Finalizados los tests, se inicializa el tablero nuevamente:
     init_board(&game);
 
+    // Variables locales para el tiempo
+    int white_time = 0, black_time = 0;
+    if (format == 1) {
+        white_time = 180;
+        black_time = 180;
+    } else if (format == 2) {
+        white_time = 600;
+        black_time = 600;
+    }
+
     // Se muestra el tablero en pantalla
     display_board(&game, p1);
 
@@ -357,12 +386,50 @@ void start_game(int p1, int format, int is_bot) {
             break;
         }
 
-        //move_t best_move = find_best_move(&game, 6);
-        //make_move(&best_move, &game, false);
-        //display_board(&game, p1);
+        // Si es que juega el bot:
+        if (is_bot && ((p1 == 1 && game.to_move == BLACK) || (p1 == 2 && game.to_move == WHITE))) {
+            printf("Turno de la CPU...\n");
+            move_t best_move = find_best_move(&game, 4);
+            make_move(&best_move, &game, true);
+            display_board(&game, p1);
+            continue; // Salta al siguiente turno después de que la CPU haga su movimiento 
+        }
+
+        // Medir tiempo de inicio del turno
+        time_t start_time = time(NULL);
 
         printf("Ingrese movimiento o comando: ");
         if (fgets(input, sizeof(input), stdin) == NULL) break;
+
+        // Medir tiempo de fin del turno
+        time_t end_time = time(NULL);
+        int elapsed_time = (int)(end_time - start_time); // Tiempo transcurrido
+        
+        // Solo descontar y mostrar tiempo si hay un formato de tiempo activo
+        if (format == 1 || format == 2) {
+            // Restar tiempo al jugador que movió
+            if (game.to_move == WHITE)
+                white_time -= elapsed_time;
+            else
+                black_time -= elapsed_time;
+            
+            // Mostrar tiempo restante
+            printf("Tiempo restante - Blancas: %d:%02d | Negras: %d:%02d\n", 
+                white_time / 60, white_time % 60,
+                black_time / 60, black_time % 60);
+            
+            // Verificar si algun jugador se quedó sin tiempo
+            if (white_time <= 0) {
+                printf("=== FINAL DEL JUEGO ===\n");
+                printf("¡Tiempo agotado para las blancas! Las negras ganan por tiempo.\n");
+                break;
+            }
+            if (black_time <= 0) {
+                printf("=== FINAL DEL JUEGO ===\n");
+                printf("¡Tiempo agotado para las negras! Las blancas ganan por tiempo.\n");
+                break;
+            }
+        }
         
         // Remover newline
         input[strcspn(input, "\n")] = '\0';
@@ -454,37 +521,42 @@ int main() {
     // Profunidad 3: 97862 nodos
     // Profunidad 4: 4085603 nodos
     // Profunidad 5: 193690690 nodos
-    const char *fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
-    init_board_fen(&game, fen);
+    const char *perft_fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
+    init_board_fen(&game, perft_fen);
     perft_benchmark(&game, 4);
 
     // Test funcionamiento minimax (Grafo implícito)
     //init_board(&game);
     //move_t best_move = find_best_move(&game, 6);
+
+    init_board(&game);
     
     // Test funcionamiento de TDA tabla hash + Zobrist hashing
-    zobrist_init();
-    hashtable_t *book = hashtable_create();
-    if (!book) {
-        printf("[ HASHTABLE ] No se pudo crear un libro de aperturas como tabla hash\n");
+    book = hashtable_create();
+    if (!load_polyglot_book("book.bin", book)) {
+        printf("[ HASHTABLE ] No se pudo cargar libro de aperturas (book.bin)\n");
+        hashtable_destroy(book);
         return 1;
     }
 
+    printf("[ HASHTABLE ] Se cargaron %d posiciones correctamente\n", hashtable_get_size(book));
+
+    // Test gamestate_t a FEN
+    char fen[128];
+    gamestate_to_fen(&game, fen);
+    printf("[ DEBUG ] FEN: %s\n", fen);
+
     // Obtener clave Zobrist para posición inicial
-    uint64_t key_initial = zobrist_hash(&game);
-    printf("[ ZOBRIST ] Clave posición inicial: %llu\n", key_initial);
+    uint64_t key_initial = polyglot_hash(fen);
+    printf("[ ZOBRIST ] Clave posición inicial: %016llx\n", key_initial);
 
     // Simulamos e2e4 y obtenemos la nueva clave
     make_dummy_e2e4(&game);
-    uint64_t key_after_e4 = zobrist_hash(&game);
-    printf("[ ZOBRIST ] Clave después de e2e4: %llu\n", key_after_e4);
+    gamestate_to_fen(&game, fen);
+    uint64_t key_after_e4 = polyglot_hash(fen);
+    printf("[ ZOBRIST ] Clave después de e2e4: %016llx\n", key_after_e4);
 
-    // Agregamos movimientos recomendados para las dos posiciones
-    hashtable_add_move(book, key_initial, "e2e4", 10);
-    hashtable_add_move(book, key_initial, "d2d4", 8);
-    hashtable_add_move(book, key_after_e4, "e7e5", 10);
-    hashtable_add_move(book, key_after_e4, "c7c5", 9);
-
+    // Utilizamos nuestra hashtable (libro de apertura) para obtener los mejores movimientos en 2 posiciones de prueba 
     char recommended_move[MAX_MOVE_STR];
     if (hashtable_lookup_best_move(book, key_initial, recommended_move))
         printf("[ HASHTABLE ] Movimiento recomendado para posición inicial: %s\n", recommended_move);
